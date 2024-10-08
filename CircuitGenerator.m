@@ -165,23 +165,7 @@ function isValid = isValidCircuit(circuit)
 
     % Rule 7: All circuits must have a single resistor in series with the
     % rest of the circuit if the circuit has more than 1 element. 
-    % (Geared more toward EIS data)
-    % Doesn't work how i want it because of how it builds circuits
-    % if getNumElements(circuit) >  
-    % if strcmp(circuit.type, 'series')
-    %     comps = circuit.components;
-    %     types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
-    %     if any(ismember(types, {'R'}))
-    %         isValid = true;
-    %     else
-    %         isValid = false;
-    %         return;
-    %     end
-    % elseif strcmp(circuit.type, 'parallel')
-    %     isValid = false;
-    %     return;
-    % end
-    % end
+
 end
 
 function count = countElementType(circuit, elementTypes)
