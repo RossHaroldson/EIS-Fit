@@ -18,7 +18,7 @@ isValidCircuit(cir)
 %% Configuration
 
 % Initialize parameters
-maxElements = 5;
+maxElements = 6;
 loadsave = false;
 elementtypes = {'R','C','W','T','L'}';
 
@@ -37,6 +37,7 @@ CircStr = cell(maxElements, 1);
 circuitCount = 0; % Total number of circuits
 
 %% Build circuits of size 1 to n
+tic
 for numElements = 1:maxElements
     fprintf('Processing circuits with %d elements\n', numElements);
     if numElements == 1
@@ -77,6 +78,8 @@ for numElements = 1:maxElements
         disp('Saving data');
         save(savefilepath, 'CircStr', '-v7.3');
     end
+    toc
+    disp(length(CircStr{end}))
 end
 disp('Finished');
 %% Display results
