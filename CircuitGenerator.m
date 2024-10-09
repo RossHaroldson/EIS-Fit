@@ -6,7 +6,10 @@
 %% Clear everything to start from scratch
 clear all
 clc
-
+%% Test commands
+for i=1:6
+    DiffCircStr{i}=CircStrOld{i}(~ismember(CircStrOld{i},CircStrNew{i}));
+end
 %% Configuration
 
 % Initialize parameters
