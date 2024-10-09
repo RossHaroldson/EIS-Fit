@@ -1,26 +1,34 @@
-% Equivilent Circuit Generator
+% Equivalent Circuit Generator
 % This script is for generating all possible configurations of circuits
-% given a max number of elements and element types and taking into account
-% rules for valid circuit configuration. Circuit configurations are build 
-% recursively to minimize the number of invalid configurations. 
+% given a max number of elements and element types, taking into account
+% rules for valid circuit configurations. Circuit configurations are built 
+% recursively to minimize the number of invalid configurations.
+
 %% Clear everything to start from scratch
 clear all
 clc
-
+%% Tests
+%strcir='s(R,L,p(p(s(R,p(R,C)),C),s(R,p(O,O),p(O,O))))'
+strcir='s(R,L,p(p(s(R,p(R,C)),C),s(p(O,O),p(O,O))))'
+%strcir='s(R,O,L)'
+cir=parseCircuitString(strcir);
+concir=getCanonicalForm(cir)
+cir=parseCircuitString(concir);
+isValidCircuit(cir)
 %% Configuration
 
 % Initialize parameters
-maxElements = 4;
+maxElements = 5;
 loadsave = false;
 elementtypes = {'R','C','W','T','L'}';
 
 % Get save and load location for data
 savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
 if ischar(savefolder)
-    savefilepath = {savefolder '\' 'circuit_data.mat'};
+    savefilepath = fullfile(savefolder, 'circuit_data.mat');
     savedata = true;
 else
-    savefilepath = {savefolder '\' 'circuit_data.mat'};
+    savefilepath = '';
     savedata = false;
 end
 
@@ -37,22 +45,24 @@ for numElements = 1:maxElements
     else
         % Initialize storage for circuits of current size
         newCircuits = {};
-        % Generate combinations of circuits that sum up to numElements
-        for sizeA = 1:numElements-1
-            sizeB = numElements - sizeA;
-            % Generate all combinations
-            for idxA = 1:length(CircStr{sizeA})
-                for idxB = 1:length(CircStr{sizeB})
-                    % Combine in series and parallel
-                    modes = {'s', 'p'};
-                    for m = 1:length(modes)
-                        newCircuit = [modes{m}, '(', CircStr{sizeA}{idxA}, ',', CircStr{sizeB}{idxB}, ')'];
-                        % Simplify and validate the new circuit
-                        simplifiedCircuit = simplifyCircuitString(newCircuit);
-                        if isValidCircuitString(simplifiedCircuit)
-                            % Avoid duplicates
-                            if ~ismember(simplifiedCircuit, newCircuits) && getNumElements(parseCircuitString(simplifiedCircuit)) == numElements
-                                newCircuits{end+1} = simplifiedCircuit;
+        % Generate circuits by adding one element to existing circuits
+        for idx = 1:length(CircStr{numElements-1})
+            circuitStr = CircStr{numElements-1}{idx};
+            circuit = parseCircuitString(circuitStr);
+            for e = 1:length(elementtypes)
+                element = elementtypes{e};
+                % Insert element into the circuit
+                newCircuitStructs = insertElement(circuit, element);
+                for c = 1:length(newCircuitStructs)
+                    newCircuit = newCircuitStructs{c};
+                    simplifiedCircuit = simplifyCircuit(newCircuit);
+                    totalElements = getNumElements(simplifiedCircuit);
+                    if totalElements == numElements
+                        % Simplify and validate
+                        canonicalStr = getCanonicalForm(simplifiedCircuit);
+                        if isValidCircuit(simplifiedCircuit)
+                            if ~ismember(canonicalStr, newCircuits)
+                                newCircuits{end+1} = canonicalStr;
                             end
                         end
                     end
@@ -61,7 +71,6 @@ for numElements = 1:maxElements
         end
         % Store unique circuits of current size
         CircStr{numElements} = unique(newCircuits)';
-        newCircuits={};
     end
     % Optionally save progress
     if savedata
@@ -165,7 +174,7 @@ function isValid = isValidCircuit(circuit)
 
     % Rule 7: All circuits must have a single resistor in series with the
     % rest of the circuit if the circuit has more than 1 element. 
-
+    % (Implement this rule if needed)
 end
 
 function count = countElementType(circuit, elementTypes)
@@ -352,5 +361,33 @@ function elemType = getElementType(circuit)
         elemType = circuit.value;
     else
         elemType = '';
+    end
+end
+
+function newCircuits = insertElement(circuit, element)
+    newCircuits = {};
+    elementNode = struct('type', 'element', 'value', element);
+    modes = {'series', 'parallel'};
+    % Combine element with entire circuit
+    for m = 1:length(modes)
+        mode = modes{m};
+        newCircuits{end+1} = struct('type', mode, 'components', {{elementNode, circuit}});
+    end
+    % Recurse into components
+    if isfield(circuit, 'components')
+        for i = 1:length(circuit.components)
+            subcomponent = circuit.components{i};
+            if ~strcmp(subcomponent.type, 'element')
+                % Recurse into subcomponent
+                subNewCircuits = insertElement(subcomponent, element);
+                for j = 1:length(subNewCircuits)
+                    newSubcomponent = subNewCircuits{j};
+                    % Create new circuit by replacing subcomponent
+                    newCircuit = circuit;
+                    newCircuit.components{i} = newSubcomponent;
+                    newCircuits{end+1} = newCircuit;
+                end
+            end
+        end
     end
 end
