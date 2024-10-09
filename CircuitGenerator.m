@@ -15,6 +15,9 @@ cir=parseCircuitString(strcir);
 concir=getCanonicalForm(cir)
 cir=parseCircuitString(concir);
 isValidCircuit(cir)
+for i=1:6
+    DiffCircStr{i}=CircStrOld{i}(~ismember(CircStrOld{i},CircStrNew{i}));
+end
 %% Configuration
 
 % Initialize parameters
