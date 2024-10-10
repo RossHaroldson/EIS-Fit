@@ -3,6 +3,9 @@
 % given a max number of elements and element types and taking into account
 % rules for valid circuit configuration. Circuit configurations are build 
 % recursively to minimize the number of invalid configurations. 
+
+% test
+
 %% Clear everything to start from scratch
 clear all
 clc
