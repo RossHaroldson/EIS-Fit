@@ -82,7 +82,7 @@ for numElements = 1:maxElements
         save(savefilepath, 'CircStr', '-v7.3');
     end
     toc
-    disp(length(CircStr{end}))
+    disp(length(CircStr{numElements}))
 end
 disp('Finished');
 %% Display results
@@ -167,6 +167,8 @@ function isValid = isValidCircuit(circuit)
 
     % Rule 6: Exclude diffusion elements in direct parallel or series with
     % R, C, L element types
+    % Doesn't work for this method. Need to check when length(comps) > 2 as
+    % well
     if strcmp(circuit.type, 'series') || strcmp(circuit.type, 'parallel')
         comps = circuit.components;
         if length(comps) == 2
@@ -383,16 +385,14 @@ function newCircuits = insertElement(circuit, element)
     if isfield(circuit, 'components')
         for i = 1:length(circuit.components)
             subcomponent = circuit.components{i};
-            if ~strcmp(subcomponent.type, 'element')
-                % Recurse into subcomponent
-                subNewCircuits = insertElement(subcomponent, element);
-                for j = 1:length(subNewCircuits)
-                    newSubcomponent = subNewCircuits{j};
-                    % Create new circuit by replacing subcomponent
-                    newCircuit = circuit;
-                    newCircuit.components{i} = newSubcomponent;
-                    newCircuits{end+1} = newCircuit;
-                end
+            % Recurse into subcomponent
+            subNewCircuits = insertElement(subcomponent, element);
+            for j = 1:length(subNewCircuits)
+                newSubcomponent = subNewCircuits{j};
+                % Create new circuit by replacing subcomponent
+                newCircuit = circuit;
+                newCircuit.components{i} = newSubcomponent;
+                newCircuits{end+1} = newCircuit;
             end
         end
     end
