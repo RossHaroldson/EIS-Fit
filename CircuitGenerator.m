@@ -9,19 +9,21 @@ clear all
 clc
 %% Tests
 %strcir='s(R,L,p(p(s(R,p(R,C)),C),s(R,p(O,O),p(O,O))))'
-strcir='s(R,L,p(p(s(R,p(R,C)),C),s(p(O,O),p(O,O))))'
+%strcir='s(R,L,p(p(s(R,p(R,C)),C),s(p(R,O,O),p(O,O))))'
+strcir='p(T,s(R,T))'
 %strcir='s(R,O,L)'
 cir=parseCircuitString(strcir);
 concir=getCanonicalForm(cir)
 cir=parseCircuitString(concir);
 isValidCircuit(cir)
+%% Tests
 for i=1:6
     DiffCircStr{i}=CircStrOld{i}(~ismember(CircStrOld{i},CircStrNew{i}));
 end
 %% Configuration
 
 % Initialize parameters
-maxElements = 6;
+maxElements = 3;
 loadsave = false;
 elementtypes = {'R','C','W','T','L'}';
 
@@ -66,8 +68,16 @@ for numElements = 1:maxElements
                         canonicalStr = getCanonicalForm(simplifiedCircuit);
                         if isValidCircuit(simplifiedCircuit)
                             if ~ismember(canonicalStr, newCircuits)
-                                newCircuits{end+1} = canonicalStr;
+                                newCircuits{end+1} = canonicalStr
+                                if strcmp(canonicalStr,'s(T,p(R,T))')
+                                    assignin('base','wtfcir',simplifiedCircuit)
+                                end
                             end
+                            %if strcmp(canonicalStr,'s(T,p(R,T))')
+                            %    assignin('base','wtfcir',simplifiedCircuit)
+                            %end
+                        else
+                            disp({'Invalid circuit found: ' canonicalStr})
                         end
                     end
                 end
@@ -167,17 +177,9 @@ function isValid = isValidCircuit(circuit)
 
     % Rule 6: Exclude diffusion elements in direct parallel or series with
     % R, C, L element types
-    % Doesn't work for this method. Need to check when length(comps) > 2 as
-    % well
-    if strcmp(circuit.type, 'series') || strcmp(circuit.type, 'parallel')
-        comps = circuit.components;
-        if length(comps) == 2
-            types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
-            if (any(ismember(types, {'R', 'C', 'L'})) && any(ismember(types, {'W', 'O', 'T', 'G'})))
-                isValid = false;
-                return;
-            end
-        end
+    isValid = rule6(circuit);
+    if ~isValid
+        return;
     end
 
     % Rule 7: All circuits must have a single resistor in series with the
@@ -393,6 +395,36 @@ function newCircuits = insertElement(circuit, element)
                 newCircuit = circuit;
                 newCircuit.components{i} = newSubcomponent;
                 newCircuits{end+1} = newCircuit;
+            end
+        end
+    end
+end
+
+function isValid = rule6(circuit)
+    % Recursively search the circuit components until it finds a R,C, or L
+    % in series or parallel directly with a diffusion element W,T,O, or G
+    % and return false if it does find it or true if it doesn't
+    isValid = true;
+    %comps = circuit.components;
+    if strcmp(circuit.type, 'element')
+         % if circuit struct is a element type return true
+        return
+    end
+    if isfield(circuit, 'components')
+        % see if there is a R,C, or L in direct series or parallel with a
+        % diffusion element
+        comps = circuit.components;
+        types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
+        assignin('base','types',types)
+        if (any(ismember(types, {'R', 'C', 'L'})) && any(ismember(types, {'W', 'O', 'T', 'G'})))
+            isValid = false;
+            return;
+        end
+        for i = 1:length(comps)
+            subcomponent = circuit.components{i};
+            isValid = rule6(subcomponent);
+            if ~isValid 
+                return
             end
         end
     end
