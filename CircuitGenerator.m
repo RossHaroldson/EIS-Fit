@@ -82,7 +82,7 @@ for numElements = 1:maxElements
         save(savefilepath, 'CircStr', '-v7.3');
     end
     toc
-    disp(length(CircStr{end}))
+    disp(length(CircStr{numElements}))
 end
 disp('Finished');
 %% Display results
@@ -167,6 +167,8 @@ function isValid = isValidCircuit(circuit)
 
     % Rule 6: Exclude diffusion elements in direct parallel or series with
     % R, C, L element types
+    % Doesn't work for this method. Need to check when length(comps) > 2 as
+    % well
     if strcmp(circuit.type, 'series') || strcmp(circuit.type, 'parallel')
         comps = circuit.components;
         if length(comps) == 2
