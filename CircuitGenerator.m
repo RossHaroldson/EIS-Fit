@@ -17,13 +17,13 @@ concir=getCanonicalForm(cir)
 cir=parseCircuitString(concir);
 isValidCircuit(cir)
 %% Tests
-for i=1:6
-    DiffCircStr{i}=CircStrOld{i}(~ismember(CircStrOld{i},CircStrNew{i}));
+for i=1:length(CircStrOld)
+    DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
 end
 %% Configuration
 
 % Initialize parameters
-maxElements = 3;
+maxElements = 5;
 loadsave = false;
 elementtypes = {'R','C','W','T','L'}';
 
@@ -61,24 +61,20 @@ for numElements = 1:maxElements
                 newCircuitStructs = insertElement(circuit, element);
                 for c = 1:length(newCircuitStructs)
                     newCircuit = newCircuitStructs{c};
-                    simplifiedCircuit = simplifyCircuit(newCircuit);
-                    totalElements = getNumElements(simplifiedCircuit);
+                    %simplifiedCircuit = simplifyCircuit(newCircuit);
+                    totalElements = getNumElements(newCircuit);
                     if totalElements == numElements
                         % Simplify and validate
-                        canonicalStr = getCanonicalForm(simplifiedCircuit);
-                        if isValidCircuit(simplifiedCircuit)
+                        canonicalStr = getCanonicalForm(newCircuit);
+                        %if isValidCircuit(simplifiedCircuit)
                             if ~ismember(canonicalStr, newCircuits)
-                                newCircuits{end+1} = canonicalStr
-                                if strcmp(canonicalStr,'s(T,p(R,T))')
-                                    assignin('base','wtfcir',simplifiedCircuit)
-                                end
+                                newCircuits{end+1} = canonicalStr;
+                            else
+                                %disp('this check is useful?')
                             end
-                            %if strcmp(canonicalStr,'s(T,p(R,T))')
-                            %    assignin('base','wtfcir',simplifiedCircuit)
-                            %end
-                        else
-                            disp({'Invalid circuit found: ' canonicalStr})
-                        end
+                        %else
+                        %    disp(['Bad circuit got through: ' getCanonicalForm(simplifiedCircuit)])
+                        %end
                     end
                 end
             end
@@ -125,67 +121,52 @@ function simplifiedStr = simplifyCircuitString(circuitStr)
     simplifiedStr = getCanonicalForm(simplifiedCircuit);
 end
 
-function isValid = isValidCircuit(circuit)
-    % Check if the circuit is valid based on custom rules
-    isValid = true;
-
-    % Rule 1: Exclude R in series with C directly connected
-    if strcmp(circuit.type, 'series')
-        comps = circuit.components;
-        if length(comps) == 2
-            if (isElement(comps{1}, 'R') && isElement(comps{2}, 'C')) || ...
-               (isElement(comps{1}, 'C') && isElement(comps{2}, 'R'))
-                isValid = false;
-                return;
-            end
-        end
-    end
-
-    % Rule 2: Exclude R in parallel with L directly connected
-    if strcmp(circuit.type, 'parallel')
-        comps = circuit.components;
-        if length(comps) == 2
-            if (isElement(comps{1}, 'R') && isElement(comps{2}, 'L')) || ...
-               (isElement(comps{1}, 'L') && isElement(comps{2}, 'R'))
-                isValid = false;
-                return;
-            end
-        end
-    end
-
-    % Rule 3: Limit diffusion elements W, O, T, G to 4
-    diffusionElements = {'W', 'O', 'T', 'G'};
-    numDiffusion = countElementType(circuit, diffusionElements);
-    if numDiffusion > 4
-        isValid = false;
-        return;
-    end
-
-    % Rule 4: Limit inductors L to 2
-    numL = countElementType(circuit, {'L'});
-    if numL > 2
-        isValid = false;
-        return;
-    end
-
-    % Rule 5: Limit capacitors C to 4
-    numC = countElementType(circuit, {'C'});
-    if numC > 4
-        isValid = false;
-        return;
-    end
-
-    % Rule 6: Exclude diffusion elements in direct parallel or series with
-    % R, C, L element types
-    isValid = rule6(circuit);
-    if ~isValid
-        return;
-    end
-
-    % Rule 7: All circuits must have a single resistor in series with the
-    % rest of the circuit if the circuit has more than 1 element. 
-    % (Implement this rule if needed)
-end
+% function isValid = isValidCircuit(circuit)
+%     % Check if the circuit is valid based on custom rules
+%     isValid = true;
+% 
+%     % Rule 1: Exclude R in series with C directly connected
+%     % broken in new method
+%     isValid = RC_Rule(circuit);
+%     if ~isValid
+%         return;
+%     end
+%     % Rule 2: Exclude R in parallel with L directly connected
+%     % broken in new method
+%     isValid = RL_Rule(circuit);
+%     if ~isValid
+%         return;
+%     end
+% 
+%     % Rule 3: Limit diffusion elements W, O, T, G to 4
+%     isValid = Diff_Limit_Rule(circuit,4);
+%     if ~isValid
+%         return;
+%     end
+% 
+%     % Rule 4: Limit inductors L to 2
+%     isValid = L_Limit_Rule(circuit,2);
+%     if ~isValid
+%         return;
+%     end
+% 
+%     % Rule 5: Limit capacitors C to 4
+%     isValid = C_Limit_Rule(circuit,4);
+%     if ~isValid
+%         return;
+%     end
+% 
+%     % Rule 6: Exclude diffusion elements in direct parallel or series with
+%     % R, C, L element types
+%     isValid = Recursive_Rule_Check(circuit);
+%     if ~isValid
+%         return;
+%     end
+% 
+%     % Rule 7: All circuits must have a single resistor in series with the
+%     % rest of the circuit if the circuit has more than 1 element. 
+%     % (Implement this rule if needed)
+% end
 
 function count = countElementType(circuit, elementTypes)
     % Count the number of elements in the circuit that match the given element types
@@ -381,7 +362,15 @@ function newCircuits = insertElement(circuit, element)
     % Combine element with entire circuit
     for m = 1:length(modes)
         mode = modes{m};
-        newCircuits{end+1} = struct('type', mode, 'components', {{elementNode, circuit}});
+        newCircuit = struct('type', mode, 'components', {{elementNode, circuit}});
+        newCircuit = simplifyCircuit(newCircuit);
+        % apply rules 1 and 2 here when it adds them.
+        %if RC_Rule(newCircuit) && RL_Rule(newCircuit) && Diff_Rule(newCircuit)
+        if isValidCircuit(newCircuit)
+            newCircuits{end+1} = newCircuit;
+        else
+            %disp(['Bad circuit found in outer: ' getCanonicalForm(newCircuit)])
+        end
     end
     % Recurse into components
     if isfield(circuit, 'components')
@@ -394,38 +383,149 @@ function newCircuits = insertElement(circuit, element)
                 % Create new circuit by replacing subcomponent
                 newCircuit = circuit;
                 newCircuit.components{i} = newSubcomponent;
-                newCircuits{end+1} = newCircuit;
+                newCircuit = simplifyCircuit(newCircuit);
+                if isValidCircuit(newCircuit)
+                    newCircuits{end+1} = newCircuit;
+                else
+                    %disp(['Bad circuit found in inner: ' getCanonicalForm(newCircuit)])
+                end
             end
         end
     end
 end
 
-function isValid = rule6(circuit)
-    % Recursively search the circuit components until it finds a R,C, or L
-    % in series or parallel directly with a diffusion element W,T,O, or G
-    % and return false if it does find it or true if it doesn't
-    isValid = true;
-    %comps = circuit.components;
-    if strcmp(circuit.type, 'element')
-         % if circuit struct is a element type return true
-        return
-    end
-    if isfield(circuit, 'components')
-        % see if there is a R,C, or L in direct series or parallel with a
-        % diffusion element
-        comps = circuit.components;
-        types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
-        assignin('base','types',types)
-        if (any(ismember(types, {'R', 'C', 'L'})) && any(ismember(types, {'W', 'O', 'T', 'G'})))
+function isValid = RC_Rule(circuit)
+% Rule 1: Exclude R in series with C directly connected
+isValid = true;
+if strcmp(circuit.type, 'series')
+    comps = circuit.components;
+    if length(comps) == 2
+        if (isElement(comps{1}, 'R') && isElement(comps{2}, 'C')) || ...
+                (isElement(comps{1}, 'C') && isElement(comps{2}, 'R'))
             isValid = false;
             return;
         end
-        for i = 1:length(comps)
-            subcomponent = circuit.components{i};
-            isValid = rule6(subcomponent);
-            if ~isValid 
-                return
-            end
+    end
+end
+end
+
+function isValid = RL_Rule(circuit)
+% Rule 2: Exclude R in parallel with L directly connected
+isValid = true;
+if strcmp(circuit.type, 'parallel')
+    comps = circuit.components;
+    if length(comps) == 2
+        if (isElement(comps{1}, 'R') && isElement(comps{2}, 'L')) || ...
+                (isElement(comps{1}, 'L') && isElement(comps{2}, 'R'))
+            isValid = false;
+            return;
         end
     end
+end
+end
+
+function isValid = Diff_Limit_Rule(circuit,n)
+% Rule 3: Limit diffusion elements W, O, T, G to 4
+isValid = true;
+diffusionElements = {'W', 'O', 'T', 'G'};
+numDiffusion = countElementType(circuit, diffusionElements);
+if numDiffusion > n
+    isValid = false;
+    return;
+end
+end
+
+function isValid = L_Limit_Rule(circuit,n)
+% Rule 4: Limit inductors L to 2
+isValid = true;
+numL = countElementType(circuit, {'L'});
+if numL > n
+    isValid = false;
+    return;
+end
+end
+
+function isValid = C_Limit_Rule(circuit,n)
+% Rule 5: Limit capacitors C to n
+isValid=true;
+numC = countElementType(circuit, {'C'});
+if numC > n
+    isValid = false;
+    return;
+end
+end
+
+function isValid = isValidCircuit(circuit)
+% Recursively search the circuit components until it finds a R,C, or L
+% in series or parallel directly with a diffusion element W,T,O, or G
+% and return false if it does find it or true if it doesn't
+isValid = true;
+if strcmp(circuit.type, 'element')
+    % if circuit struct is a element type return true
+    return
+end
+if isfield(circuit, 'components')
+    comps = circuit.components;
+    % The actual rule check(s)
+    % Rule 1: Exclude R in series with C directly connected
+    isValid = RC_Rule(circuit);
+    if ~isValid
+        return;
+    end
+    % Rule 2: Exclude R in parallel with L directly connected
+    isValid = RL_Rule(circuit);
+    if ~isValid
+        return;
+    end
+
+    % Rule 3: Check if a R,C, or L in series or parallel directly with a 
+    % diffusion element W,T,O, or G
+    isValid = Diff_Rule(circuit);
+    if ~isValid
+        return;
+    end
+
+    % Rule 4: Limit diffusion elements W, O, T, G to 4
+    isValid = Diff_Limit_Rule(circuit,4);
+    if ~isValid
+        return;
+    end
+
+    % Rule 5: Limit inductors L to 2
+    isValid = L_Limit_Rule(circuit,2);
+    if ~isValid
+        return;
+    end
+
+    % Rule 6: Limit capacitors C to 4
+    isValid = C_Limit_Rule(circuit,4);
+    if ~isValid
+        return;
+    end
+
+    % More Rules
+
+    % Recursive search
+    for i = 1:length(comps)
+        subcomponent = circuit.components{i};
+        isValid = isValidCircuit(subcomponent);
+        if ~isValid
+            return
+        end
+    end
+end
+end
+
+function isValid = Diff_Rule(circuit)
+% Rule 6: see if there is a R,C, or L in direct series or parallel with a
+% diffusion element
+isValid=true;
+if isfield(circuit, 'components')
+    comps = circuit.components;
+    types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
+    if (any(ismember(types, {'R', 'C', 'L'})) && any(ismember(types, {'W', 'O', 'T', 'G'})))
+        isValid = false;
+        return;
+    end
+end
 end
