@@ -23,9 +23,10 @@ end
 %% Configuration
 
 % Initialize parameters
-maxElements = 5;
+maxElements = 6;
 loadsave = false;
-elementtypes = {'R','C','W','T','L'}';
+parallelloop=false;
+elementtypes = {'R','C','L','W','T'}';
 
 % Get save and load location for data
 savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
@@ -37,11 +38,21 @@ else
     savedata = false;
 end
 
+% Ask to load data from file
+loaddatafilepath = uigetfile('C:\', 'Choose which data file to load');
+if ischar(loaddatafilepath)
+    load(loaddatafilepath);
+    loadeddata = true;
+else
+    loadeddata = false;
+end
+
 % Initialize circuit storage
 CircStr = cell(maxElements, 1);
 circuitCount = 0; % Total number of circuits
 
 %% Build circuits of size 1 to n
+profile on
 tic
 for numElements = 1:maxElements
     fprintf('Processing circuits with %d elements\n', numElements);
@@ -50,37 +61,71 @@ for numElements = 1:maxElements
         CircStr{1} = elementtypes;
     else
         % Initialize storage for circuits of current size
-        newCircuits = {};
-        % Generate circuits by adding one element to existing circuits
-        for idx = 1:length(CircStr{numElements-1})
-            circuitStr = CircStr{numElements-1}{idx};
-            circuit = parseCircuitString(circuitStr);
-            for e = 1:length(elementtypes)
-                element = elementtypes{e};
-                % Insert element into the circuit
-                newCircuitStructs = insertElement(circuit, element);
-                for c = 1:length(newCircuitStructs)
-                    newCircuit = newCircuitStructs{c};
-                    %simplifiedCircuit = simplifyCircuit(newCircuit);
-                    totalElements = getNumElements(newCircuit);
-                    if totalElements == numElements
-                        % Simplify and validate
-                        canonicalStr = getCanonicalForm(newCircuit);
-                        %if isValidCircuit(simplifiedCircuit)
-                            if ~ismember(canonicalStr, newCircuits)
-                                newCircuits{end+1} = canonicalStr;
-                            else
-                                %disp('this check is useful?')
+        tempCircuits = cell(1, length(CircStr{numElements-1}) * length(elementtypes)); % Preallocate cell array
+
+        previousCircuits = CircStr{numElements-1};  % Only broadcast the relevant slice
+        if parallelloop
+            parfor idx = 1:length(previousCircuits) % Broadcast only previousCircuits
+                localNewCircuits = {}; % Local to this parfor iteration
+                circuitStr = previousCircuits{idx};   % Only work on the relevant slice
+                circuit = parseCircuitString(circuitStr);
+
+                for e = 1:length(elementtypes)
+                    element = elementtypes{e};
+                    % Insert element into the circuit
+                    newCircuitStructs = insertElement(circuit, element);
+
+                    for c = 1:length(newCircuitStructs)
+                        newCircuit = newCircuitStructs{c};
+                        totalElements = getNumElements(newCircuit);
+
+                        if totalElements == numElements
+                            % Simplify and validate
+                            canonicalStr = getCanonicalForm(newCircuit);
+                            if ~ismember(canonicalStr, localNewCircuits)
+                                localNewCircuits{end+1} = canonicalStr;
                             end
-                        %else
-                        %    disp(['Bad circuit got through: ' getCanonicalForm(simplifiedCircuit)])
-                        %end
+                        end
                     end
                 end
+
+                % Collect local results into the preallocated array
+                tempCircuits{idx} = localNewCircuits;
+            end
+        else
+            % Do single CPU method
+            for idx = randperm(length(previousCircuits)) % Broadcast only previousCircuits
+                localNewCircuits = {}; % Local to this parfor iteration
+                circuitStr = previousCircuits{idx};   % Only work on the relevant slice
+                circuit = parseCircuitString(circuitStr);
+
+                for e = 1:length(elementtypes)
+                    element = elementtypes{e};
+                    % Insert element into the circuit
+                    newCircuitStructs = insertElement(circuit, element);
+
+                    for c = 1:length(newCircuitStructs)
+                        newCircuit = newCircuitStructs{c};
+                        totalElements = getNumElements(newCircuit);
+
+                        if totalElements == numElements
+                            % Simplify and validate
+                            canonicalStr = getCanonicalForm(newCircuit);
+                            if ~ismember(canonicalStr, localNewCircuits)
+                                localNewCircuits{end+1} = canonicalStr;
+                            end
+                        end
+                    end
+                end
+
+                % Collect local results into the preallocated array
+                tempCircuits{idx} = localNewCircuits;
             end
         end
+        % Concatenate results from all workers
+        allNewCircuits = [tempCircuits{:}];
         % Store unique circuits of current size
-        CircStr{numElements} = unique(newCircuits)';
+        CircStr{numElements} = unique(allNewCircuits)';
     end
     % Optionally save progress
     if savedata
@@ -91,6 +136,8 @@ for numElements = 1:maxElements
     disp(length(CircStr{numElements}))
 end
 disp('Finished');
+profile viewer
+
 %% Display results
 disp('Unique and Simplified Circuit Configurations:');
 for k = 1:maxElements
@@ -120,53 +167,6 @@ function simplifiedStr = simplifyCircuitString(circuitStr)
     % Get the canonical form
     simplifiedStr = getCanonicalForm(simplifiedCircuit);
 end
-
-% function isValid = isValidCircuit(circuit)
-%     % Check if the circuit is valid based on custom rules
-%     isValid = true;
-% 
-%     % Rule 1: Exclude R in series with C directly connected
-%     % broken in new method
-%     isValid = RC_Rule(circuit);
-%     if ~isValid
-%         return;
-%     end
-%     % Rule 2: Exclude R in parallel with L directly connected
-%     % broken in new method
-%     isValid = RL_Rule(circuit);
-%     if ~isValid
-%         return;
-%     end
-% 
-%     % Rule 3: Limit diffusion elements W, O, T, G to 4
-%     isValid = Diff_Limit_Rule(circuit,4);
-%     if ~isValid
-%         return;
-%     end
-% 
-%     % Rule 4: Limit inductors L to 2
-%     isValid = L_Limit_Rule(circuit,2);
-%     if ~isValid
-%         return;
-%     end
-% 
-%     % Rule 5: Limit capacitors C to 4
-%     isValid = C_Limit_Rule(circuit,4);
-%     if ~isValid
-%         return;
-%     end
-% 
-%     % Rule 6: Exclude diffusion elements in direct parallel or series with
-%     % R, C, L element types
-%     isValid = Recursive_Rule_Check(circuit);
-%     if ~isValid
-%         return;
-%     end
-% 
-%     % Rule 7: All circuits must have a single resistor in series with the
-%     % rest of the circuit if the circuit has more than 1 element. 
-%     % (Implement this rule if needed)
-% end
 
 function count = countElementType(circuit, elementTypes)
     % Count the number of elements in the circuit that match the given element types
@@ -364,8 +364,6 @@ function newCircuits = insertElement(circuit, element)
         mode = modes{m};
         newCircuit = struct('type', mode, 'components', {{elementNode, circuit}});
         newCircuit = simplifyCircuit(newCircuit);
-        % apply rules 1 and 2 here when it adds them.
-        %if RC_Rule(newCircuit) && RL_Rule(newCircuit) && Diff_Rule(newCircuit)
         if isValidCircuit(newCircuit)
             newCircuits{end+1} = newCircuit;
         else
