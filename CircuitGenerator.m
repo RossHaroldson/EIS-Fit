@@ -1,5 +1,5 @@
 % Equivalent Circuit Generator
-% This script is for generating all possible configurations of circuits
+% This test script is for generating all possible configurations of circuits
 % given a max number of elements and element types, taking into account
 % rules for valid circuit configurations. Circuit configurations are built 
 % recursively to minimize the number of invalid configurations.
@@ -23,7 +23,7 @@ end
 %% Configuration
 
 % Initialize parameters
-maxElements = 4;
+maxElements = 5;
 loadsave = false;
 parallelloop=false;
 elementtypes = {'R','C','L','W','T'}';
@@ -139,6 +139,7 @@ disp('Finished');
 profile viewer
 
 %% Display results
+% may take forever if max elements is greater than 4
 disp('Unique and Simplified Circuit Configurations:');
 for k = 1:maxElements
     fprintf('\nCircuits with %d element(s):\n', k);

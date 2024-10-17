@@ -1,4 +1,4 @@
-function count = countElementType(circuit, elementTypes)
+function total = countElementType(circuit, elementTypes)
     % Count the number of elements in the circuit that match the given element types
     if strcmp(circuit.type, 'element')
         if any(strcmp(circuit.value, elementTypes))
@@ -13,4 +13,9 @@ function count = countElementType(circuit, elementTypes)
             count = count + countElementType(circuit.components{i}, elementTypes);
         end
     end
+    % circuitstr=getCanonicalForm(circuit);
+    % total = 0;
+    % for i=1:length(elementTypes)
+    %     total = total + count(circuitstr,elementTypes(i));
+    % end
 end
