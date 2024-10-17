@@ -6,7 +6,7 @@
 
 %% Clear everything to start from scratch
 clear all
-clc
+
 %% Tests
 %strcir='s(R,L,p(p(s(R,p(R,C)),C),s(R,p(O,O),p(O,O))))'
 %strcir='s(R,L,p(p(s(R,p(R,C)),C),s(p(R,O,O),p(O,O))))'

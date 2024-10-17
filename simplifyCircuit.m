@@ -1,5 +1,6 @@
 function simplifiedCircuit = simplifyCircuit(circuit)
-    % Simplify the circuit based on predefined rules
+    % Simplify the circuit struct based on predefined rules
+    % Returns the new simplified circuit struct
 
     % First, recursively simplify the components
     if isfield(circuit, 'components')
@@ -29,6 +30,7 @@ function simplifiedCircuit = simplifyCircuit(circuit)
     end
 end
 
+ 
 function flatComps = flattenComponents(circuit, mode)
     % Recursively flatten components of the same type
     flatComps = {};
@@ -42,6 +44,7 @@ function flatComps = flattenComponents(circuit, mode)
         end
     end
 end
+
 
 function uniqueComps = uniqueComponents(components)
     % Remove duplicate components based on their canonical forms,
