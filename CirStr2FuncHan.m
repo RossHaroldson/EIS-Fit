@@ -1,23 +1,37 @@
-% Define the circuit configuration string
-circuit_str = 'p(R,p(R,C),s(R,C,L))';
+function Z = CirStr2FuncHan(circuit_str, element_vals)
+    % Define the circuit configuration string
+    % circuit_str = 'p(R,p(R,C),s(R,C,L))';
 
-% Create the impedance function handle
-Imp = create_impedance_handle(circuit_str);
+    %disp(circuit_str);
+    %disp(element_vals);
+    
+    % Create the impedance function handle
+    Imp = create_impedance_handle(circuit_str);
+    
+    % Now you can use the Imp function handle with your component values
+    
+    %{
+    % Example values
+    R1 = 100;
+    R2 = 200;
+    R3 = 150;
+    C1 = 1e-6;
+    C2 = 2e-6;
+    L1 = 1e-3;
+    w = 2*pi*50; % Frequency in radians per second
+    
+    % Calculate impedance
+    Z = Imp({R1, R2, R3, C1, C2, L1, w});
+    %}
 
-% Now you can use the Imp function handle with your component values
-% Example values
-R1 = 100;
-R2 = 200;
-R3 = 150;
-C1 = 1e-6;
-C2 = 2e-6;
-L1 = 1e-3;
-w = 2*pi*50; % Frequency in radians per second
+    % Calculate impedance
+    Z = Imp(element_vals);
 
-% Calculate impedance
-Z = Imp(R1, R2, R3, C1, C2, L1, w);
-disp(['The impedance is: ', num2str(Z)]);
-%%
+    disp(['The impedance is: ', num2str(Z)]);
+end 
+
+%% Helper Functions
+
 function Imp = create_impedance_handle(circuit_str)
     % Initialize counters
     R_count = 0;
@@ -44,7 +58,7 @@ function Imp = create_impedance_handle(circuit_str)
     
     % Process 'par' functions recursively
     expr_str = process_par(expr_str);
-    % Process 'par' functions recursively
+    % Process 'ser' functions recursively
     expr_str = process_ser(expr_str);
     
     % Replace commas in series configurations with '+'
@@ -52,16 +66,24 @@ function Imp = create_impedance_handle(circuit_str)
     
     % Create the function handle string
     % Function arguments
+    var_list{end+1} = 'w';
     var_list_unique = unique(var_list, 'stable'); % Remove duplicates
-    func_args = [strjoin(var_list_unique, ','), ',w'];
+    func_args = join(var_list_unique, ',');
     % Full function string
-    func_str = ['@(', func_args, ') ', expr_str];
+    func_str = join(['@(', func_args, ') ', expr_str],'');
     
     % Display the function string for debugging
     disp(['Function string: ', func_str]);
+
+    % Now replace substrings to match the format of element_vars passed
+    % into Imp
+    func_str = replace(func_str,func_args,'element_vals');
+    for v = 1:length(var_list_unique)
+        func_str = replace(func_str, var_list_unique{v}, append('element_vals{',num2str(v),'}'));
+    end
     
     % Now, create the function handle
-    Imp = str2func(func_str);
+    Imp = str2func(func_str{1});
 end
 
 % Helper function to replace elements with unique variables and expressions
