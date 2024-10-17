@@ -36,7 +36,7 @@ numModes = length(modes);
 
 % Get save and load location for data
 % savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
-savefolder = '';
+savefolder = [];
 if ischar(savefolder)
     savefilepath = fullfile(savefolder, 'stringParsedCircuits.mat');
     savedata = true;
@@ -180,7 +180,7 @@ function [canonicalCircuit, good] = processCircuit(circuit, CircStr, elementType
     % Check uniqueness
     if ~ismember(canonicalCircuit, CircStr)
         % Validate
-        if isValidCircuit(canonicalCircuit, elementTypes)
+        if isValidCircuit(canonicalCircuit)
             good = true;
         end
     end
@@ -235,7 +235,10 @@ function canonicalCircuit = getCanonicalForm(circuit, elementTypes, numElementTy
         block = extractBetween(circuit, oc(startIdx,1)+1, oc(stopIdx,1)-1);
         while stopIdx ~= 1
             for e = 1:numElementTypes
-                elem{end+1} = extract(block, elementTypes{e});
+                currentElem = extract(circuit, elementTypes{e});
+                if ~isempty(currentElem)
+                    elem{end+1} = currentElem{1};
+                end
             end
             % step to next block of elements
             startIdx = stopIdx;
@@ -251,9 +254,12 @@ function canonicalCircuit = getCanonicalForm(circuit, elementTypes, numElementTy
         % extract final block of elements
         block = extractBetween(circuit, oc(startIdx,2)+1, oc(stopIdx,2)-1);
         for e = 1:numElementTypes
-            elem{end+1} = extract(block, elementTypes{e});
+            currentElem = extract(circuit, elementTypes{e});
+            if ~isempty(currentElem)
+                elem{end+1} = currentElem{1};
+            end
         end
-        elemCanon = join(sort(elem(cellfun('isempty',elem))),',');
+        elemCanon = join(sort(elem),',');
 
         % apply recursively to components
         comps = {};
@@ -273,7 +279,10 @@ function canonicalCircuit = getCanonicalForm(circuit, elementTypes, numElementTy
         elem = {};
         % extract elements
         for e = 1:numElementTypes
-            elem{end+1} = extract(circuit, elementTypes{e});
+            currentElem = extract(circuit, elementTypes{e});
+            if ~isempty(currentElem)
+                elem{end+1} = currentElem{1};
+            end
         end
         elemCanon = join(sort(elem),',');
         % update repr
@@ -281,10 +290,9 @@ function canonicalCircuit = getCanonicalForm(circuit, elementTypes, numElementTy
     end
 end
 
-function isValid = RC_Rule(circuit, elementTypes)
+function isValid = RC_Rule(circuit)
     % Rule 1: Exclude R in series with C directly connected
     isValid = true;
-    nonRCtypes = replace(elementTypes,{'R','C'},'');
     % find series components
     [oc, numComps] = findParentheses(circuit);
     for idx = 1:numComps
@@ -292,9 +300,9 @@ function isValid = RC_Rule(circuit, elementTypes)
             % isolate the series component
             component = circuit(oc(idx,1)-1:oc(idx,2));
             % check for subcomponents
-            if ~any(ismember({'s','p'}, component(2:end)))
+            if ~any(ismember(['s','p'], component(2:end)))
                 % if no subcomponents, check for other element types
-                if ~any(ismember(nonRCtypes, component))
+                if ~any(ismember(['L','W','T','O','G'], component))
                     % if none, series component must only contain R and C
                     isValid = false;
                     return;
@@ -304,10 +312,9 @@ function isValid = RC_Rule(circuit, elementTypes)
     end
 end
 
-function isValid = RL_Rule(circuit, elementTypes)
+function isValid = RL_Rule(circuit)
     % Rule 2: Exclude R in parallel with L directly connected
     isValid = true;
-    nonRLtypes = replace(elementTypes,{'R','L'},'');
     % find parallel components
     [oc, numComps] = findParentheses(circuit);
     for idx = 1:numComps
@@ -315,9 +322,9 @@ function isValid = RL_Rule(circuit, elementTypes)
             % isolate the parallel component
             component = circuit(oc(idx,1)-1:oc(idx,2));
             % check for subcomponents
-            if ~any(ismember({'s','p'}, component(2:end)))
+            if ~any(ismember(['s','p'], component(2:end)))
                 % if no subcomponents, check for other element types
-                if ~any(ismember(nonRLtypes, component))
+                if ~any(ismember(['C','W','T','O','G'], component))
                     % if none, parallel component must only contain R and L
                     isValid = false;
                     return;
@@ -327,22 +334,20 @@ function isValid = RL_Rule(circuit, elementTypes)
     end
 end
         
-function isValid = Diff_Rule(circuit, elementTypes)
+function isValid = Diff_Rule(circuit)
     % Rule 3: see if there is a R,C, or L in direct series or parallel with a
     % diffusion element
     isValid = true;
-    diffusionTypes = replace(elementTypes,{'R','L','C'},'');
-    standardTypes = replace(elementTypes,{'W','T','O','G'},'');
     % find components
     [oc, numComps] = findParentheses(circuit);
     for idx = 1:numComps
         % isolate the component
         component = circuit(oc(idx,1)-1:oc(idx,2));
         % check for subcomponents
-        if ~any(ismember({'s','p'}, component(2:end)))
+        if ~any(ismember(['s','p'], component(2:end)))
             % if no subcomponents, count element types
-            [~,numDiffTypes] = findElements(component,diffusionTypes);
-            [~,numStandardTypes] = findElements(component,standardTypes);
+            [~,numDiffTypes] = findElements(component,{'W','T','O','G'});
+            [~,numStandardTypes] = findElements(component,{'R','L','C'});
             % check for single R, L, or C in component with single
             % diffusion element
             totNumDiff = sum(numDiffTypes);
@@ -371,7 +376,7 @@ function isValid = L_Limit_Rule(circuit)
     % Rule 5: Limit inductors L to n
     isValid = true;
     numL = 2;
-    [~,n] = findElements(circuit, 'L');
+    [~,n] = findElements(circuit, {'L'});
     if n > numL
         isValid = false;
         return;
@@ -382,7 +387,7 @@ function isValid = C_Limit_Rule(circuit)
     % Rule 6: Limit capacitors C to n
     isValid=true;
     numC = 4;
-    [~,n] = findElements(circuit, 'C');
+    [~,n] = findElements(circuit, {'C'});
     if n > numC
         isValid = false;
         return;
@@ -394,14 +399,13 @@ end
 % Check for RR, CC, LL, and WW components. 
 % Since duplicates are reduced, numElements is violated. 
 % So instead of reducing, just find and confirm invalidity.
-function isValid = reductionRule(circuit, elementTypes)
+function isValid = reductionRule(circuit)
     % Rule 7: see if there is a R,C,L, or W in direct series or parallel
     % with a like element
     isValid = true;
-    reducibleTypes = replace(elementTypes,{'T','O','G'},'');
     % find elements of reducible type
-    [Redidx, numRed] = findElements(circuit, reducibleTypes);
-    numRedTypes = length(reducibleTypes);
+    [Redidx, numRed] = findElements(circuit, {'R','L','C','W'});
+    numRedTypes = length(numRed);
     for e = 1:numRedTypes
         for i = 1:numRed(e)-1
             % Assuming a flattened, canonically ordered circuit:
@@ -415,7 +419,7 @@ function isValid = reductionRule(circuit, elementTypes)
     end
 end
 
-function isValid = isValidCircuit(circuit, elementTypes)
+function isValid = isValidCircuit(circuit)
 % Recursively search the circuit components until it finds a R,C, or L
 % in series or parallel directly with a diffusion element W,T,O, or G
 % and return false if it does find it or true if it doesn't
@@ -424,31 +428,7 @@ function isValid = isValidCircuit(circuit, elementTypes)
     % assumption that components are irreducible.
     % Dump circuits with reducible elements, since numElements is
     % violated by reducing elements to canonical form.
-    isValid = reductionRule(circuit, elementTypes);
-    if ~isValid
-        return;
-    end
-
-    % Rule 1: Exclude R in series with C directly connected
-    isValid = RC_Rule(circuit, elementTypes);
-    if ~isValid
-        return;
-    end
-    % Rule 2: Exclude R in parallel with L directly connected
-    isValid = RL_Rule(circuit, elementTypes);
-    if ~isValid
-        return;
-    end
-
-    % Rule 3: Check if a R,C, or L in series or parallel directly with a 
-    % diffusion element W,T,O, or G
-    isValid = Diff_Rule(circuit, elementTypes);
-    if ~isValid
-        return;
-    end
-
-    % Rule 4: Limit diffusion elements W, O, T, G to numDiff
-    isValid = Diff_Limit_Rule(circuit);
+    isValid = reductionRule(circuit);
     if ~isValid
         return;
     end
@@ -461,6 +441,30 @@ function isValid = isValidCircuit(circuit, elementTypes)
 
     % Rule 6: Limit capacitors C to numC
     isValid = C_Limit_Rule(circuit);
+    if ~isValid
+        return;
+    end
+
+    % Rule 4: Limit diffusion elements W, O, T, G to numDiff
+    isValid = Diff_Limit_Rule(circuit);
+    if ~isValid
+        return;
+    end
+
+    % Rule 1: Exclude R in series with C directly connected
+    isValid = RC_Rule(circuit);
+    if ~isValid
+        return;
+    end
+    % Rule 2: Exclude R in parallel with L directly connected
+    isValid = RL_Rule(circuit);
+    if ~isValid
+        return;
+    end
+
+    % Rule 3: Check if a R,C, or L in series or parallel directly with a 
+    % diffusion element W,T,O, or G
+    isValid = Diff_Rule(circuit);
     if ~isValid
         return;
     end
