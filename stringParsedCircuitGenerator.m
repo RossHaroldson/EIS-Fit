@@ -17,12 +17,14 @@ cir=parseCircuitString(strcir);
 concir=getCanonicalForm(cir)
 cir=parseCircuitString(concir);
 isValidCircuit(cir)
+
 %% Tests
 for i=1:length(CircStrOld)
     DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
 end
 %}
-
+strcir='s(R,L,p(p(s(R,p(R,R,C)),C),s(R,p(T,T),p(T,T))))'
+flattenCircuit(strcir)
 %% Configuration
 
 % Initialize parameters
@@ -67,7 +69,7 @@ for numElements = 1:maxElements
                 % Combine element e with circuit c
                 for m = 1:numModes
                     newCircuit = append(modes{m}, '(', elementTypes{e}, ',', CircStr{numElements-1}{c}, ')');
-                    [canonicalCircuit, good] = processCircuit(newCircuit, CircStr{numElements}, elementTypes, numElementTypes);
+                    [canonicalCircuit, good] = processCircuit(newCircuit, numElements, CircStr{numElements}, elementTypes, numElementTypes);
                     if good
                         CircStr{numElements}{end+1} = canonicalCircuit;
                     end
@@ -75,8 +77,8 @@ for numElements = 1:maxElements
                 % Insert element e into components of c
                 [oc, numComps] = findParentheses(CircStr{numElements-1}{c});
                 for idx = 1:numComps
-                    newCircuit = insertAfter(CircStr{numElements-1}{c}, oc(idx,1), elementTypes{e} + ',');
-                    [canonicalCircuit, good] = processCircuit(newCircuit, CircStr{numElements}, elementTypes, numElementTypes);
+                    newCircuit = insertAfter(CircStr{numElements-1}{c}, oc(idx,1), [elementTypes{e}, ',']);
+                    [canonicalCircuit, good] = processCircuit(newCircuit, numElements, CircStr{numElements}, elementTypes, numElementTypes);
                     if good
                         CircStr{numElements}{end+1} = canonicalCircuit;
                     end
@@ -92,7 +94,7 @@ for numElements = 1:maxElements
                             newCircuit = insertAfter(bigstr, elem{el}(idx)-1, str);
                             newcircuit = newCircuit;
                             % Process circuit
-                            [canonicalCircuit, good] = processCircuit(newCircuit, CircStr{numElements}, elementTypes, numElementTypes);
+                            [canonicalCircuit, good] = processCircuit(newCircuit, numElements, CircStr{numElements}, elementTypes, numElementTypes);
                             if good
                                 % Save good circuit
                                 CircStr{numElements}{end+1} = canonicalCircuit;
@@ -140,23 +142,27 @@ function [oc, numPairs] = findParentheses(str)
     % column 2 = index of ')' in str
     % rows are pairs of '(' and ')' indices
     oc = [];
-    % find '(' and ')' in the string
-    op=strfind(str,'(');
-    cl=strfind(str,')');
+    op = strfind(str, '(');
+    cl = strfind(str, ')');
+    
     % search for pairs until all are identified
-    while ~isempty(op) || ~isempty(cl)
+    while ~isempty(op) && ~isempty(cl)
         % find '(' for first ')'
         idx = find(op < cl(1), 1, 'last');
         % append this pair to function output
-        oc = [oc; op(idx) cl(1)];
-        % remove paired '(' from vector
+        oc = [oc; op(idx), cl(1)];
+        % remove paired '(' and ')'
         op(idx) = [];
-        % remove paired ')' from vector
         cl(1) = [];
     end
-    % sort pairs by index of '('
-    oc = sortrows(oc);
-    numPairs = size(oc,1);
+    numPairs = size(oc, 1);
+end
+
+function totalElements = findNumElements(charArray,elementTypes)
+    totalElements = 0;
+    for i = 1:length(elementTypes)
+        totalElements = totalElements + sum(charArray == elementTypes{i});
+    end
 end
 
 function [idx, numElem] = findElements(str,elem)
@@ -171,124 +177,173 @@ function [idx, numElem] = findElements(str,elem)
     end
 end
 
-function [canonicalCircuit, good] = processCircuit(circuit, CircStr, elementTypes, numElementTypes)
+function [canonicalCircuit, good] = processCircuit(circuit, numElements, CircStr, elementTypes, numElementTypes)
     good = false;
     % Flatten elements and components
     flatCircuit = flattenCircuit(circuit);
     % Canonize
     canonicalCircuit = getCanonicalForm(flatCircuit, elementTypes, numElementTypes);
     % Check uniqueness
-    if ~ismember(canonicalCircuit, CircStr)
-        % Validate
-        if isValidCircuit(canonicalCircuit)
-            good = true;
+    if numElements == findNumElements(canonicalCircuit,elementTypes)
+        if ~ismember(canonicalCircuit, CircStr)
+            % Validate
+            if isValidCircuit(canonicalCircuit)
+                good = true;
+            end
         end
     end
 end
 
 function flatCircuit = flattenCircuit(circuit)
-    % Recursively flatten nested components of the same mode, from inside out
-    flatCircuit = circuit;
-    % Look for components
-    [oc,numComps] = findParentheses(circuit);
-    while numComps > 1
-        flagStringChange = false;
-        % Step through components
-        for idx = 1:numComps
-            outerMode = flatCircuit(1);
-            % Extract component
-            comp = flatCircuit(oc(idx,1)-1:oc(idx,2));
-            % Recursively flatten component
-            flatComp = flattenCircuit(comp);
-            innerMode = flatComp(1);
-            % Check if connection matches
-            if innerMode == outerMode
-                subComps = flatComp(3:end-1);
-                % replace component with its subcomponents
-                leftStr = flatCircuit(1:oc(idx,1)-2);
-                rightStr = flatCircuit(oc(idx,2)+1:end);
-                flatCircuit = append(leftStr, subComps, rightStr);
-                % Update indices and flag the change
-                [oc,numComps] = findParentheses(flatCircuit);
-                flagStringChange = true;
-            end
-            % if the string changed, break out of the 'for' statement
-            if flagStringChange
-                break;
-            end
-        end
+    % Base case: if no parentheses, return the circuit
+    if ~contains(circuit, '(')
+        flatCircuit = circuit;
+        return;
     end
+    
+    % Find components (parentheses pairs)
+    [oc, numComps] = findParentheses(circuit);
+    if numComps == 0
+        flatCircuit = circuit;
+        return;
+    end
+
+    flatCircuit = circuit;
+    
+    % Process components from the innermost outward
+    for idx = numComps:-1:1
+        % Extract the component (including the mode 's' or 'p')
+        compStart = oc(idx, 1) - 1;
+        compEnd = oc(idx, 2);
+        comp = flatCircuit(compStart:compEnd);
+        innerMode = comp(1);  % 's' or 'p'
+        
+        % Recursively flatten the component
+        innerContent = comp(3:end-1); % Extract content inside parentheses
+        flatComp = flattenCircuit(innerContent);
+        subComps = splitComponents(flatComp);  % Get individual sub-components
+        
+        % Check if we can reduce 's(...)' or 'p(...)' containing only R, L, C
+        reducedComp = reduceSeriesParallel(innerMode, subComps);
+        
+        % **New Check for Single-Element Components**
+        if isscalar(reducedComp)
+            % Replace the entire component with the single element
+            replacement = reducedComp(1);
+        else
+            % Recombine the reduced components into a string
+            %reducedCompStr = append(reducedComp, ',');
+            reducedCompStr = reducedComp;
+            % Reconstruct the component
+            replacement = append(innerMode, '(', reducedCompStr, ')');
+        end
+        
+        % Replace the original component with the reduced version
+        leftStr = flatCircuit(1:oc(idx, 1)-2);
+        rightStr = flatCircuit(oc(idx, 2)+1:end);
+        flatCircuit = append(leftStr, replacement, rightStr);
+        
+        % Recalculate parentheses positions since the string has changed
+        [oc, numComps] = findParentheses(flatCircuit);
+    end
+end
+
+
+function reducedComp = reduceSeriesParallel(mode, subComps)
+    % Only apply reduction for R, C, L elements, not T
+    elementsToReduce = {'R', 'C', 'L','W'};
+    
+    if all(ismember(subComps, elementsToReduce))
+        if strcmp(mode, 's') || strcmp(mode, 'p')
+            % Remove identical elements in series/parallel
+            reducedComp = unique(subComps);
+        else
+            reducedComp = subComps;
+        end
+    else
+        reducedComp = subComps;  % No reduction if 'T' is involved
+    end
+    
+    % Recombine the reduced components into a string
+    reducedComp = strjoin(reducedComp, ',');
+end
+
+function subComps = splitComponents(str)
+    % Separate components within a string like 'R,L,C'
+    subComps = strsplit(str, ',');
 end
 
 function canonicalCircuit = getCanonicalForm(circuit, elementTypes, numElementTypes)
     % Get a canonical string representation of the circuit
     canonicalCircuit = circuit;
-    [oc,numComps] = findParentheses(circuit);
+    [oc, numComps] = findParentheses(circuit);
 
-    % for nested components
-    if numComps > 1
-        elem = {};
-        % start at first '(', stop at next '('
-        startIdx = 1;
-        stopIdx = startIdx + 1;
-        % extract elements and modes between components and outer parentheses
-        block = extractBetween(circuit, oc(startIdx,1)+1, oc(stopIdx,1)-1);
-        while stopIdx ~= 1
-            for e = 1:numElementTypes
-                currentElem = extract(circuit, elementTypes{e});
-                if ~isempty(currentElem)
-                    elem{end+1} = currentElem{1};
-                end
-            end
-            % step to next block of elements
-            startIdx = stopIdx;
-            % if reached final block
-            if oc(startIdx,2) == max(oc(2:end),2)
-                stopIdx = 1;
-                block = extractBetween(circuit, oc(startIdx,2)+1, oc(stopIdx,2)-1);
-            else
-                stopIdx = startIdx + 1;
-                block = extractBetween(circuit, oc(startIdx,2)+1, oc(stopIdx,1)-1);
-            end
-        end
-        % extract final block of elements
-        block = extractBetween(circuit, oc(startIdx,2)+1, oc(stopIdx,2)-1);
-        for e = 1:numElementTypes
-            currentElem = extract(circuit, elementTypes{e});
-            if ~isempty(currentElem)
-                elem{end+1} = currentElem{1};
-            end
-        end
-        elemCanon = join(sort(elem),',');
-
-        % apply recursively to components
-        comps = {};
-        for c = 1:numComps
-            % get component
-            comp = circuit(oc(c,1)-1:oc(c,2));
-            % canonize component
-            comps{end+1} = getCanonicalForm(comp);
-        end
-        compsCanon = join(sort(comps),',');
-
-        % update repr
-        canonicalCircuit = replaceBetween(circuit, 3, length(circuit)-1, append(elemCanon, ',', compsCanon));
-        
-    % if circuit has only elements
-    elseif numComps == 1
-        elem = {};
-        % extract elements
-        for e = 1:numElementTypes
-            currentElem = extract(circuit, elementTypes{e});
-            if ~isempty(currentElem)
-                elem{end+1} = currentElem{1};
-            end
-        end
-        elemCanon = join(sort(elem),',');
-        % update repr
-        canonicalCircuit = replaceBetween(circuit, 3, length(circuit)-1, elemCanon);
+    % Base case: if there are no parentheses, return the circuit as is
+    if numComps == 0
+        return;
     end
+
+    % Initialize storage for elements and components
+    elem = {};
+    comps = {};
+
+    % Extract mode ('s' or 'p') from the circuit
+    mode = circuit(1);
+
+    % Extract the content inside the outermost parentheses
+    content = circuit(3:end-1);
+
+    % Split the content by commas, considering the parentheses
+    parts = splitByCommaConsideringParentheses(content);
+
+    % Process each part
+    for i = 1:length(parts)
+        part = strtrim(parts{i});
+        if isElement(part, elementTypes)
+            % If it's an element, add it to the element list
+            elem{end+1} = part;
+        else
+            % If it's a component (starts with 's' or 'p'), process it recursively
+            compCanonical = getCanonicalForm(part, elementTypes, numElementTypes);
+            comps{end+1} = compCanonical;
+        end
+    end
+
+    % Sort elements and components separately
+    elem = sort(elem);
+    comps = sort(comps);
+
+    % Combine elements and components back into a string
+    combined = strjoin([elem, comps], ',');
+
+    % Construct the canonical circuit string
+    canonicalCircuit = [mode '(' combined ')'];
 end
+
+function result = isElement(part, elementTypes)
+    % Check if the part is one of the element types
+    result = any(strcmp(part, elementTypes));
+end
+
+function parts = splitByCommaConsideringParentheses(str)
+    % Split the string by commas, but consider nested parentheses
+    parts = {};
+    bracketLevel = 0;
+    lastSplit = 1;
+    for i = 1:length(str)
+        if str(i) == '('
+            bracketLevel = bracketLevel + 1;
+        elseif str(i) == ')'
+            bracketLevel = bracketLevel - 1;
+        elseif str(i) == ',' && bracketLevel == 0
+            parts{end+1} = str(lastSplit:i-1);
+            lastSplit = i + 1;
+        end
+    end
+    % Add the last part
+    parts{end+1} = str(lastSplit:end);
+end
+
 
 function isValid = RC_Rule(circuit)
     % Rule 1: Exclude R in series with C directly connected
