@@ -401,8 +401,10 @@ function isValid = Diff_Rule(circuit)
         % check for subcomponents
         if ~any(ismember(['s','p'], component(2:end)))
             % if no subcomponents, count element types
-            [~,numDiffTypes] = findElements(component,{'W','T','O','G'});
-            [~,numStandardTypes] = findElements(component,{'R','L','C'});
+            % [~,numDiffTypes] = findElements(component,{'W','T','O','G'});
+            numDiffTypes=findNumElements(component,{'W','T','O','G'});
+            % [~,numStandardTypes] = findElements(component,{'R','L','C'});
+            numStandardTypes=findNumElements(component,{'R','L','C'});
             % check for single R, L, or C in component with single
             % diffusion element
             totNumDiff = sum(numDiffTypes);
@@ -419,8 +421,9 @@ function isValid = Diff_Limit_Rule(circuit)
     % Rule 4: Limit diffusion elements W, O, T, G to n
     isValid = true;
     numDiff = 4;
-    [~,nums] = findElements(circuit, {'W','T','O','G'});
-    n = sum(nums);
+    % [~,nums] = findElements(circuit, {'W','T','O','G'});
+    % n = sum(nums);
+    n=findNumElements(circuit,{'W','T','O','G'});
     if n > numDiff
         isValid = false;
         return;
@@ -431,7 +434,8 @@ function isValid = L_Limit_Rule(circuit)
     % Rule 5: Limit inductors L to n
     isValid = true;
     numL = 2;
-    [~,n] = findElements(circuit, {'L'});
+    % [~,n] = findElements(circuit, {'L'});
+    n=findNumElements(circuit,{'L'});
     if n > numL
         isValid = false;
         return;
@@ -442,7 +446,8 @@ function isValid = C_Limit_Rule(circuit)
     % Rule 6: Limit capacitors C to n
     isValid=true;
     numC = 4;
-    [~,n] = findElements(circuit, {'C'});
+    %[~,n] = findElements(circuit, {'C'});
+    n=findNumElements(circuit,{'C'});
     if n > numC
         isValid = false;
         return;
