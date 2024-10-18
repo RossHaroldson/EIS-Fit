@@ -23,10 +23,14 @@ end
 %% Configuration
 
 % Initialize parameters
-maxElements = 5;
+maxElements = 10;
 loadsave = false;
-parallelloop=false;
-elementtypes = {'R','C','L','W','T'}';
+parallelloop=true;
+c = parcluster;
+c.NumWorkers = 22;
+p = c.parpool(18);
+
+elementtypes = {'R','C','L','W','T','G'}';
 
 % Get save and load location for data
 savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
@@ -39,9 +43,9 @@ else
 end
 
 % Ask to load data from file
-loaddatafilepath = uigetfile('C:\', 'Choose which data file to load');
+[file, loaddatafilepath] = uigetfile('C:\', 'Choose which data file to load');
 if ischar(loaddatafilepath)
-    load(loaddatafilepath);
+    load([loaddatafilepath file]);
     loadeddata = true;
 else
     loadeddata = false;
@@ -52,9 +56,11 @@ CircStr = cell(maxElements, 1);
 circuitCount = 0; % Total number of circuits
 
 %% Build circuits of size 1 to n
-profile on
-tic
+mpiprofile on
+t1=tic;
+elapsedtime=zeros(maxElements,2);
 for numElements = 1:maxElements
+    t2=tic;
     fprintf('Processing circuits with %d elements\n', numElements);
     if numElements == 1
         % Base case: circuits with a single element
@@ -65,6 +71,9 @@ for numElements = 1:maxElements
 
         previousCircuits = CircStr{numElements-1};  % Only broadcast the relevant slice
         if parallelloop
+            % randomize the order of previously made circuits to even out
+            % the usage of workers.
+            previousCircuits = previousCircuits(randperm(length(previousCircuits)));
             parfor idx = 1:length(previousCircuits) % Broadcast only previousCircuits
                 localNewCircuits = {}; % Local to this parfor iteration
                 circuitStr = previousCircuits{idx};   % Only work on the relevant slice
@@ -93,7 +102,7 @@ for numElements = 1:maxElements
                 tempCircuits{idx} = localNewCircuits;
             end
         else
-            % Do single CPU method
+            % Do single core method
             for idx = randperm(length(previousCircuits)) % Broadcast only previousCircuits
                 localNewCircuits = {}; % Local to this parfor iteration
                 circuitStr = previousCircuits{idx};   % Only work on the relevant slice
@@ -132,11 +141,19 @@ for numElements = 1:maxElements
         disp('Saving data');
         save(savefilepath, 'CircStr', '-v7.3');
     end
-    toc
+    elapsedtime(numElements,1) = toc(t1);
+    elapsedtime(numElements,2) = toc(t2)
     disp(length(CircStr{numElements}))
+    if numElements > 3
+        timenow = datetime;
+        [fitresult, gof] = createExpFit(1:numElements,elapsedtime(1:numElements,2));
+        [fitresult2, gof] = createExpFit(1:numElements,elapsedtime(1:numElements,1));
+        estimatenextdatetime = timenow + seconds(fitresult.a*exp(fitresult.b*(numElements+1))+fitresult.c)
+        estimatedfinishtime = timenow + seconds(fitresult2.a*exp(fitresult2.b*(maxElements))+fitresult2.c)
+    end
 end
 disp('Finished');
-profile viewer
+mpiprofile viewer
 
 %% Display results
 % may take forever if max elements is greater than 4
