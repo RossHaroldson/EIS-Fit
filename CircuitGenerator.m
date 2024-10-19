@@ -9,28 +9,67 @@ clear all
 
 %% Tests
 %strcir='s(R,L,p(p(s(R,p(R,C)),C),s(R,p(O,O),p(O,O))))'
-%strcir='s(R,L,p(p(s(R,p(R,C)),C),s(p(R,O,O),p(O,O))))'
-strcir='p(T,s(R,T))'
+strcir='s(R,L,p(p(s(R,p(R,C)),C,s(p(O,O),p(O,O)))))'
+%strcir='p(T,s(R,T))'
 %strcir='s(R,O,L)'
 cir=parseCircuitString(strcir);
+simpcir=simplifyCircuitString(strcir)
 concir=getCanonicalForm(cir)
 cir=parseCircuitString(concir);
 isValidCircuit(cir)
+A='asdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkanasdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkanasdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkanasdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkan';
+B={'a','b'};
+f=@() contains(A,B);
+f2=@() ismember(A,B);
+ timeit(f)
+timeit(f2)
+
 %% Tests
 for i=1:length(CircStrOld)
     DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
 end
 %% Configuration
+prompt = {'Max number of elements: ',...
+    'Element types (R, C, L, W, T, O, G,...): ',...
+    'Parallel computing with more cores? (1 for yes, 0 for no): ',...
+    'Parallel computing number of workers (Leave blank for default size): '};
+dlgtitle = 'Configuration';
+fieldsize = [1 45; 1 45; 1 45; 1 45];
+definput = {'6','R,C,L,W,T','0',''};
+answer = inputdlg(prompt,dlgtitle,fieldsize,definput);
 
-% Initialize parameters
-maxElements = 10;
-loadsave = false;
-parallelloop=true;
-c = parcluster;
-c.NumWorkers = 22;
-p = c.parpool(18);
-
-elementtypes = {'R','C','L','W','T','G'}';
+% Go through answers
+maxElements = str2double(answer{1});
+elements = unique(answer{2}(isletter(answer{2})));
+elementtypes=cell(length(elements),1);
+for i=1:length(elements)
+    elementtypes{i,1} = elements(i);
+end
+if answer{3}
+    % Delete any exisiting pool
+    p = gcp('nocreate');
+    delete(p)
+    parallelloop=true;
+    % create cluster object c
+    c = parcluster;
+    if isscalar(answer{4})
+        % Try to create pool with desired number of workers
+        try
+            p = c.parpool(answer{4});
+        catch
+            disp(['Failed to create cluster with input size: ' num2str(answer{4})]);
+            disp('Creating pool with default size');
+            p=c.parpool;
+        end
+    else
+        disp('Creating pool with default size');
+        p=c.parpool;
+    end
+else
+    parallelloop = false;
+    p = gcp('nocreate');
+    delete(p)
+end
 
 % Get save and load location for data
 savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
@@ -41,8 +80,11 @@ else
     savefilepath = '';
     savedata = false;
 end
+% Initialize circuit storage
+CircStr = cell(maxElements, 1);
 
 % Ask to load data from file
+% NOT implemented yet
 [file, loaddatafilepath] = uigetfile('C:\', 'Choose which data file to load');
 if ischar(loaddatafilepath)
     load([loaddatafilepath file]);
@@ -50,11 +92,7 @@ if ischar(loaddatafilepath)
 else
     loadeddata = false;
 end
-
-% Initialize circuit storage
-CircStr = cell(maxElements, 1);
-circuitCount = 0; % Total number of circuits
-
+disp('Finished Configuration')
 %% Build circuits of size 1 to n
 mpiprofile on
 t1=tic;
@@ -78,25 +116,8 @@ for numElements = 1:maxElements
                 localNewCircuits = {}; % Local to this parfor iteration
                 circuitStr = previousCircuits{idx};   % Only work on the relevant slice
                 circuit = parseCircuitString(circuitStr);
-
-                for e = 1:length(elementtypes)
-                    element = elementtypes{e};
-                    % Insert element into the circuit
-                    newCircuitStructs = insertElement(circuit, element);
-
-                    for c = 1:length(newCircuitStructs)
-                        newCircuit = newCircuitStructs{c};
-                        totalElements = getNumElements(newCircuit);
-
-                        if totalElements == numElements
-                            % Simplify and validate
-                            canonicalStr = getCanonicalForm(newCircuit);
-                            if ~ismember(canonicalStr, localNewCircuits)
-                                localNewCircuits{end+1} = canonicalStr;
-                            end
-                        end
-                    end
-                end
+                
+                localNewCircuits = createNewCircuits(elementtypes,localNewCircuits,circuit,numElements);
 
                 % Collect local results into the preallocated array
                 tempCircuits{idx} = localNewCircuits;
@@ -108,24 +129,7 @@ for numElements = 1:maxElements
                 circuitStr = previousCircuits{idx};   % Only work on the relevant slice
                 circuit = parseCircuitString(circuitStr);
 
-                for e = 1:length(elementtypes)
-                    element = elementtypes{e};
-                    % Insert element into the circuit
-                    newCircuitStructs = insertElement(circuit, element);
-
-                    for c = 1:length(newCircuitStructs)
-                        newCircuit = newCircuitStructs{c};
-                        totalElements = getNumElements(newCircuit);
-
-                        if totalElements == numElements
-                            % Simplify and validate
-                            canonicalStr = getCanonicalForm(newCircuit);
-                            if ~ismember(canonicalStr, localNewCircuits)
-                                localNewCircuits{end+1} = canonicalStr;
-                            end
-                        end
-                    end
-                end
+                localNewCircuits = createNewCircuits(elementtypes,localNewCircuits,circuit,numElements);
 
                 % Collect local results into the preallocated array
                 tempCircuits{idx} = localNewCircuits;
@@ -143,14 +147,17 @@ for numElements = 1:maxElements
     end
     elapsedtime(numElements,1) = toc(t1);
     elapsedtime(numElements,2) = toc(t2)
-    disp(length(CircStr{numElements}))
+    disp(['Number of circuits made with ' num2str(numElements) ' elements were ' num2str(length(CircStr{numElements})) ' at ' char(datetime)])
     if numElements > 3
+        [fitresult, ~] = createExpFit((1:numElements)',elapsedtime(1:numElements,2));
+        [fitresult2, ~] = createExpFit((1:numElements)',elapsedtime(1:numElements,1));
         timenow = datetime;
-        [fitresult, gof] = createExpFit(1:numElements,elapsedtime(1:numElements,2));
-        [fitresult2, gof] = createExpFit(1:numElements,elapsedtime(1:numElements,1));
-        estimatenextdatetime = timenow + seconds(fitresult.a*exp(fitresult.b*(numElements+1))+fitresult.c)
-        estimatedfinishtime = timenow + seconds(fitresult2.a*exp(fitresult2.b*(maxElements))+fitresult2.c)
+        estimatenextdatetime = timenow + seconds(fitresult.a*exp(fitresult.b*(numElements+1))+fitresult.c);
+        estimatedfinishtime = timenow + seconds(fitresult2.a*exp(fitresult2.b*(maxElements))+fitresult2.c);
+        disp(['Estimated time when ' num2str(numElements+1) ' element size circuits are complete: ' char(estimatenextdatetime)])
+        disp(['Estimated time when ' num2str(maxElements) ' element size circuits are complete: ' char(estimatedfinishtime)])
     end
+    
 end
 disp('Finished');
 mpiprofile viewer

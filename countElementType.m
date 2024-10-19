@@ -11,5 +11,11 @@ function total = countElementType(circuit, elementTypes)
             total = total + countElementType(circuit.components{i}, elementTypes);
         end
     end
+    % Method below calls getCanonicalForm and then that is the bottle neck.
+    % total=0;
+    % cirstr=getCanonicalForm(circuit);
+    % for i = 1:length(elementTypes)
+    %     total = total + sum(ismember(cirstr,elementTypes{i}));
+    % end
 end
 
