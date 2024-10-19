@@ -237,7 +237,7 @@ function [canonicalCircuit, good] = processCircuit(circuit, numElements, CircStr
         % Check uniqueness
         if ~ismember(canonicalCircuit, CircStr)
             % Validate
-            if isValidCircuit(canonicalCircuit)
+            if isValidCircuit(canonicalCircuit,modes,elementTypes)
                 good = true;
             end
         end
@@ -427,31 +427,33 @@ function isValid = RL_Rule(circuit)
     end
 end
         
-function isValid = Diff_Rule(circuit)
+function isValid = Diff_Rule(circuit,modes,elementTypes)
     % Rule 3: see if there is a R,C, or L in direct series or parallel with a
     % diffusion element
     isValid = true;
-    % find components
-    [oc, numComps] = findParentheses(circuit);
-    for idx = 1:numComps
-        % isolate the component
-        component = circuit(oc(idx,1)-1:oc(idx,2));
-        % check for subcomponents
-        if ~any(ismember(['s','p'], component(2:end)))
-            % if no subcomponents, count element types
-            % [~,numDiffTypes] = findElements(component,{'W','T','O','G'});
-            numDiffTypes=findNumElements(component,{'W','T','O','G'});
-            % [~,numStandardTypes] = findElements(component,{'R','L','C'});
-            numStandardTypes=findNumElements(component,{'R','L','C'});
-            % check for single R, L, or C in component with single
-            % diffusion element
-            totNumDiff = sum(numDiffTypes);
-            totNumStandard = sum(numStandardTypes);
-            if totNumDiff == 1 && totNumStandard == 1
-                isValid = false;
-                return;
+    % Extract components
+    comps = getDirectComponents(circuit,modes,elementTypes);
+    elements = {};
+    numComps = length(comps);
+    if numComps > 0
+        for idx = 1:numComps
+            % if comp is an element, store it
+            if ~any(ismember(['s','p'],comps{idx}))
+                elements{end+1} = comps{idx};
+            else 
+            % if not, validate subcomponent
+                isValid = Diff_Rule(comps{idx},modes,elementTypes);
+                if ~isValid
+                    return;
+                end
             end
         end
+        if any(ismember({'R','L','C'},comps)) && any(ismember({'W','T','O','G'},comps))
+            isValid = false;
+            return;
+        end
+    else
+        isValid = true;
     end
 end
 
@@ -517,7 +519,7 @@ function isValid = reductionRule(circuit)
     end
 end
 
-function isValid = isValidCircuit(circuit)
+function isValid = isValidCircuit(circuit,modes,elementTypes)
 % Recursively search the circuit components until it finds a R,C, or L
 % in series or parallel directly with a diffusion element W,T,O, or G
 % and return false if it does find it or true if it doesn't
@@ -562,7 +564,7 @@ function isValid = isValidCircuit(circuit)
 
     % Rule 3: Check if a R,C, or L in series or parallel directly with a 
     % diffusion element W,T,O, or G
-    isValid = Diff_Rule(circuit);
+    isValid = Diff_Rule(circuit,modes,elementTypes);
     if ~isValid
         return;
     end
