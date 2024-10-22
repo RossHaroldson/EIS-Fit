@@ -32,10 +32,11 @@ end
 prompt = {'Max number of elements: ',...
     'Element types (R, C, L, W, T, O, G,...): ',...
     'Parallel computing with more cores? (1 for yes, 0 for no): ',...
-    'Parallel computing number of workers (Leave blank for default size): '};
+    'Parallel computing number of workers (Leave blank for default size): ',...
+    'Batch Size for saving: '};
 dlgtitle = 'Configuration';
 fieldsize = [1 45; 1 45; 1 45; 1 45];
-definput = {'10','R,C,L,W,T,G','1','16'};
+definput = {'10','R,C,L,W,T,G','1','16','4000'};
 answer = inputdlg(prompt,dlgtitle,fieldsize,definput);
 
 % Go through answers
@@ -71,6 +72,8 @@ else
     p = gcp('nocreate');
     delete(p)
 end
+% Set batch size
+batchSize = num2str(answer{5});
 
 % Get save and load location for data
 savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
@@ -126,8 +129,6 @@ else
     matObj.elapsedtime = elapsedtime;
 end
 
-% Set batch size
-batchSize = 2000; % Adjust as needed
 % Main loop
 hWaitbar = waitbar(0, 'Processing circuits with 1 element.', 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
 for numElements = currentNumElements:maxElements
@@ -197,6 +198,7 @@ for numElements = currentNumElements:maxElements
                 waitbar(batchNum/numBatches,hWaitbar, ['Processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
                 drawnow;
                 pause(0.1);
+                drawnow;
             end
 
             % Define batch indices
@@ -224,6 +226,7 @@ for numElements = currentNumElements:maxElements
             end
 
             % Concatenate results and update current circuits
+            disp('Saving data after current batch')
             allNewCircuits = [tempCircuits{:}];
             currentCircuits = [currentCircuits; allNewCircuits'];
 
@@ -245,7 +248,8 @@ for numElements = currentNumElements:maxElements
 
             % Save elapsed time
             matObj.elapsedtime = elapsedtime;
-
+            
+            drawnow;
             disp([char(datetime) ' : Saved after processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
         end
     end
