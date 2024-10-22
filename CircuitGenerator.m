@@ -17,17 +17,17 @@ simpcir=simplifyCircuitString(strcir)
 concir=getCanonicalForm(cir)
 cir=parseCircuitString(concir);
 isValidCircuit(cir)
-A='asdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkanasdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkanasdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkanasdlkfjovnwoinasldknvuwbivas;dkjowiefasd;kvwoabvoiadklkan';
-B={'a','b'};
-f=@() contains(A,B);
-f2=@() ismember(A,B);
- timeit(f)
-timeit(f2)
-
+matObj.CircStr8 = string(CircStr{8});
+matObj.processedMask8= true(length(CircStr{7}),1);
+matObj.CircStr9 = string(CircStr{9});
+matObj.processedMask9 = true(length(CircStr{8}),1);
+matObj.processedMask10 = false(length(CircStr{9}),1);
+matObj.currentNumElements = 10;
 %% Tests
 for i=1:length(CircStrOld)
     DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
 end
+
 %% Configuration
 prompt = {'Max number of elements: ',...
     'Element types (R, C, L, W, T, O, G,...): ',...
@@ -35,7 +35,7 @@ prompt = {'Max number of elements: ',...
     'Parallel computing number of workers (Leave blank for default size): '};
 dlgtitle = 'Configuration';
 fieldsize = [1 45; 1 45; 1 45; 1 45];
-definput = {'6','R,C,L,W,T','0',''};
+definput = {'10','R,C,L,W,T,G','1','16'};
 answer = inputdlg(prompt,dlgtitle,fieldsize,definput);
 
 % Go through answers
@@ -52,14 +52,15 @@ if answer{3}
     parallelloop=true;
     % create cluster object c
     c = parcluster;
-    if isscalar(answer{4})
+    if isscalar(str2double(answer{4}))
         % Try to create pool with desired number of workers
         try
-            p = c.parpool(answer{4});
-        catch
+            p = c.parpool(str2double(answer{4}));
+        catch ME
             disp(['Failed to create cluster with input size: ' num2str(answer{4})]);
             disp('Creating pool with default size');
             p=c.parpool;
+            rethrow(ME)
         end
     else
         disp('Creating pool with default size');
@@ -80,88 +81,212 @@ else
     savefilepath = '';
     savedata = false;
 end
+
 % Initialize circuit storage
-CircStr = cell(maxElements, 1);
+% We'll use a matfile object for incremental saving
+matObj = matfile(savefilepath, 'Writable', true);
 
 % Ask to load data from file
-% NOT implemented yet
-[file, loaddatafilepath] = uigetfile('C:\', 'Choose which data file to load');
+[loadFileName, loaddatafilepath] = uigetfile('*.mat', 'Choose which data file to load');
 if ischar(loaddatafilepath)
-    load([loaddatafilepath file]);
+    disp('Loading saved data.')
+    matObj = matfile(fullfile(loaddatafilepath, loadFileName), 'Writable', true);
     loadeddata = true;
 else
     loadeddata = false;
 end
+
+% Initialize or load variables
+if loadeddata
+    % Load existing variables from the MAT-file
+    variablesInMatFile = who(matObj);
+    if ismember('currentNumElements', variablesInMatFile)
+        currentNumElements = matObj.currentNumElements;
+    else
+        currentNumElements = 1;
+        matObj.currentNumElements = currentNumElements;
+    end
+else
+    % Initialize variables in the MAT-file
+    matObj.currentNumElements = 1;
+    currentNumElements = 1;
+end
+
 disp('Finished Configuration')
 %% Build circuits of size 1 to n
 mpiprofile on
-t1=tic;
-elapsedtime=zeros(maxElements,2);
-for numElements = 1:maxElements
-    t2=tic;
+t1 = tic;
+
+% Initialize variables for timing
+variablesInMatFile = who(matObj);
+if ismember('elapsedtime', variablesInMatFile)
+    elapsedtime = matObj.elapsedtime;
+else
+    elapsedtime = zeros(maxElements, 2);
+    matObj.elapsedtime = elapsedtime;
+end
+
+% Set batch size
+batchSize = 2000; % Adjust as needed
+% Main loop
+hWaitbar = waitbar(0, 'Processing circuits with 1 element.', 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+for numElements = currentNumElements:maxElements
+    t2 = tic;
     fprintf('Processing circuits with %d elements\n', numElements);
+    waitbar(0,hWaitbar, ['Processing circuits with ' num2str(numElements) ' elements.'], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
     if numElements == 1
         % Base case: circuits with a single element
-        CircStr{1} = elementtypes;
-    else
-        % Initialize storage for circuits of current size
-        tempCircuits = cell(1, length(CircStr{numElements-1}) * length(elementtypes)); % Preallocate cell array
-
-        previousCircuits = CircStr{numElements-1};  % Only broadcast the relevant slice
-        if parallelloop
-            % randomize the order of previously made circuits to even out
-            % the usage of workers.
-            previousCircuits = previousCircuits(randperm(length(previousCircuits)));
-            parfor idx = 1:length(previousCircuits) % Broadcast only previousCircuits
-                localNewCircuits = {}; % Local to this parfor iteration
-                circuitStr = previousCircuits{idx};   % Only work on the relevant slice
-                circuit = parseCircuitString(circuitStr);
-                
-                localNewCircuits = createNewCircuits(elementtypes,localNewCircuits,circuit,numElements);
-
-                % Collect local results into the preallocated array
-                tempCircuits{idx} = localNewCircuits;
-            end
+        varname_curr = ['CircStr' num2str(numElements)];
+        variablesInMatFile = who(matObj);
+        if ~ismember(varname_curr, variablesInMatFile)
+            currentCircuits = elementtypes;
+            matObj.(varname_curr) = string(currentCircuits);
         else
-            % Do single core method
-            for idx = randperm(length(previousCircuits)) % Broadcast only previousCircuits
-                localNewCircuits = {}; % Local to this parfor iteration
-                circuitStr = previousCircuits{idx};   % Only work on the relevant slice
-                circuit = parseCircuitString(circuitStr);
-
-                localNewCircuits = createNewCircuits(elementtypes,localNewCircuits,circuit,numElements);
-
-                % Collect local results into the preallocated array
-                tempCircuits{idx} = localNewCircuits;
-            end
+            currentCircuits = cellstr(matObj.(varname_curr));
         end
-        % Concatenate results from all workers
-        allNewCircuits = [tempCircuits{:}];
-        % Store unique circuits of current size
-        CircStr{numElements} = unique(allNewCircuits)';
+    else
+        % Load previous circuits
+        varname_prev = ['CircStr' num2str(numElements - 1)];
+        variablesInMatFile = who(matObj);
+        if ismember(varname_prev, variablesInMatFile)
+            previousCircuits = cellstr(matObj.(varname_prev));
+        else
+            error(['Previous circuits for numElements = ' num2str(numElements - 1) ' not found in the MAT-file.']);
+        end
+
+        % Initialize or load current circuits
+        varname_curr = ['CircStr' num2str(numElements)];
+        if ismember(varname_curr, variablesInMatFile)
+            currentCircuits = cellstr(matObj.(varname_curr));
+        else
+            currentCircuits = {};
+        end
+
+        % Load or initialize processedMask
+        varname_processedMask = ['processedMask' num2str(numElements)];
+        if ismember(varname_processedMask, variablesInMatFile)
+            processedMask = matObj.(varname_processedMask);
+        else
+            processedMask = false(length(previousCircuits), 1);
+            matObj.(varname_processedMask) = processedMask;
+        end
+
+        % Determine unprocessed indices
+        unprocessedIndices = find(~processedMask);
+
+        % Total number of unprocessed circuits
+        totalUnprocessed = length(unprocessedIndices);
+        numBatches = ceil(totalUnprocessed / batchSize);
+        waitbar(0,hWaitbar, ['Iteration 1 out of ' num2str(numBatches)], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+
+        for batchNum = 1:numBatches
+            % Process GUI events to detect button presses
+            pause(1);
+            drawnow;
+
+            % Check for cancellation before starting the batch
+            if ~ishandle(hWaitbar)
+                disp('Cancellation requested. Saving progress and exiting.');
+                matObj.currentNumElements = numElements;
+                matObj.elapsedtime = elapsedtime;
+                matObj.(varname_processedMask) = processedMask;
+                disp('Finished Saving and Returning');
+                return
+            else
+                % Update the wait bar
+                waitbar(batchNum/numBatches,hWaitbar, ['Processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
+                drawnow;
+                pause(0.1);
+            end
+
+            % Define batch indices
+            batchStartIdx = (batchNum - 1) * batchSize + 1;
+            batchEndIdx = min(batchNum * batchSize, totalUnprocessed);
+            batchIndices = unprocessedIndices(batchStartIdx:batchEndIdx);
+
+            previousCircuitsBatch = previousCircuits(batchIndices);
+            tempCircuits = cell(1, length(previousCircuitsBatch));
+
+            if parallelloop
+                parfor idx = 1:length(previousCircuitsBatch)
+                    circuitStr = previousCircuitsBatch{idx};
+                    circuit = parseCircuitString(circuitStr);
+                    localNewCircuits = createNewCircuits(elementtypes, {}, circuit, numElements);
+                    tempCircuits{idx} = localNewCircuits;
+                end
+            else
+                for idx = 1:length(previousCircuitsBatch)
+                    circuitStr = previousCircuitsBatch{idx};
+                    circuit = parseCircuitString(circuitStr);
+                    localNewCircuits = createNewCircuits(elementtypes, {}, circuit, numElements);
+                    tempCircuits{idx} = localNewCircuits;
+                end
+            end
+
+            % Concatenate results and update current circuits
+            allNewCircuits = [tempCircuits{:}];
+            currentCircuits = [currentCircuits; allNewCircuits'];
+
+            % Remove duplicates in current batch to reduce data size
+            currentCircuits = unique(currentCircuits);
+
+            % Update processedMask
+            processedMask(batchIndices) = true;
+            matObj.(varname_processedMask) = processedMask;
+
+            % Convert currentCircuits to string array
+            currentCircuits_str = string(currentCircuits);
+
+            % Write currentCircuits to matfile
+            matObj.(varname_curr) = currentCircuits_str;
+
+            % Update currentNumElements in matfile
+            matObj.currentNumElements = numElements;
+
+            % Save elapsed time
+            matObj.elapsedtime = elapsedtime;
+
+            disp([char(datetime) ' : Saved after processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
+        end
     end
-    % Optionally save progress
-    if savedata
-        disp('Saving data');
-        save(savefilepath, 'CircStr', '-v7.3');
-    end
-    elapsedtime(numElements,1) = toc(t1);
-    elapsedtime(numElements,2) = toc(t2)
-    disp(['Number of circuits made with ' num2str(numElements) ' elements were ' num2str(length(CircStr{numElements})) ' at ' char(datetime)])
+
+    % Update elapsed time
+    elapsedtime(numElements, 1) = toc(t1);
+    elapsedtime(numElements, 2) = toc(t2);
+
+    % Save elapsed time to matfile
+    matObj.elapsedtime = elapsedtime;
+
+    disp(['Number of circuits made with ' num2str(numElements) ' elements were ' num2str(length(currentCircuits)) ' at ' char(datetime)]);
     if numElements > 3
-        [fitresult, ~] = createExpFit((1:numElements)',elapsedtime(1:numElements,2));
-        [fitresult2, ~] = createExpFit((1:numElements)',elapsedtime(1:numElements,1));
+        [fitresult, ~] = createExpFit((1:numElements)', elapsedtime(1:numElements, 2));
+        [fitresult2, ~] = createExpFit((1:numElements)', elapsedtime(1:numElements, 1));
         timenow = datetime;
-        estimatenextdatetime = timenow + seconds(fitresult.a*exp(fitresult.b*(numElements+1))+fitresult.c);
-        estimatedfinishtime = timenow + seconds(fitresult2.a*exp(fitresult2.b*(maxElements))+fitresult2.c);
-        disp(['Estimated time when ' num2str(numElements+1) ' element size circuits are complete: ' char(estimatenextdatetime)])
-        disp(['Estimated time when ' num2str(maxElements) ' element size circuits are complete: ' char(estimatedfinishtime)])
+        estimatenextdatetime = timenow + seconds(fitresult.a * exp(fitresult.b * (numElements + 1)) + fitresult.c);
+        estimatedfinishtime = timenow + seconds(fitresult2.a * exp(fitresult2.b * (maxElements)) + fitresult2.c);
+        disp(['Estimated time when ' num2str(numElements + 1) ' element size circuits are complete: ' char(estimatenextdatetime)]);
+        disp(['Estimated time when ' num2str(maxElements) ' element size circuits are complete: ' char(estimatedfinishtime)]);
     end
-    
+
+    % Check for cancellation after completing numElements
+    drawnow; % Process GUI events
+    if ~ishandle(hWaitbar)
+        disp('Cancellation requested. Saving progress and exiting.');
+        matObj.currentNumElements = numElements + 1;
+        matObj.elapsedtime = elapsedtime;
+        matObj.(varname_processedMask) = processedMask;
+        disp('Finished Saving and Returning');
+        return
+    end
 end
+
 disp('Finished');
 mpiprofile viewer
 
+% % Close the cancel button window if still open
+% if isvalid(cancelFig)
+%     delete(cancelFig);
+% end
 %% Display results
 % may take forever if max elements is greater than 4
 disp('Unique and Simplified Circuit Configurations:');
@@ -175,3 +300,10 @@ for k = 1:maxElements
     end
 end
 clear circuits sortedCircuits
+
+%% helper functions
+% Function to perform the save operation
+% function saveDataFunction(filepath, dataStruct)
+%     save(filepath, '-struct', 'dataStruct', '-v7.3');
+%     disp([char(datetime) ' Finished saving data'])
+% end
