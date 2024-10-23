@@ -18,4 +18,5 @@ function repr = getCanonicalForm(circuit)
         % Concatenate results
         repr = [operatorstr, '(', strjoin(compReprs, ','), ')'];
     end
+    %string(repr);
 end

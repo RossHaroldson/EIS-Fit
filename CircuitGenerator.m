@@ -6,7 +6,7 @@
 
 %% Clear everything to start from scratch
 clear all
-
+profile off
 %% Tests
 %strcir='s(R,L,p(p(s(R,p(R,C)),C),s(R,p(O,O),p(O,O))))'
 strcir='s(R,L,p(p(s(R,p(R,C)),C,s(p(O,O),p(O,O)))))'
@@ -17,12 +17,6 @@ simpcir=simplifyCircuitString(strcir)
 concir=getCanonicalForm(cir)
 cir=parseCircuitString(concir);
 isValidCircuit(cir)
-matObj.CircStr8 = string(CircStr{8});
-matObj.processedMask8= true(length(CircStr{7}),1);
-matObj.CircStr9 = string(CircStr{9});
-matObj.processedMask9 = true(length(CircStr{8}),1);
-matObj.processedMask10 = false(length(CircStr{9}),1);
-matObj.currentNumElements = 10;
 %% Tests
 for i=1:length(CircStrOld)
     DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
@@ -35,7 +29,7 @@ prompt = {'Max number of elements: ',...
     'Parallel computing number of workers (Leave blank for default size): ',...
     'Batch Size for saving: '};
 dlgtitle = 'Configuration';
-fieldsize = [1 45; 1 45; 1 45; 1 45];
+fieldsize = [1 45; 1 45; 1 45; 1 45; 1 45];
 definput = {'10','R,C,L,W,T,G','1','16','4000'};
 answer = inputdlg(prompt,dlgtitle,fieldsize,definput);
 
@@ -46,14 +40,14 @@ elementtypes=cell(length(elements),1);
 for i=1:length(elements)
     elementtypes{i,1} = elements(i);
 end
-if answer{3}
+if str2double(answer{3})
     % Delete any exisiting pool
     p = gcp('nocreate');
     delete(p)
     parallelloop=true;
     % create cluster object c
     c = parcluster;
-    if isscalar(str2double(answer{4}))
+    if ~isnan(str2double(answer{4}))
         % Try to create pool with desired number of workers
         try
             p = c.parpool(str2double(answer{4}));
@@ -73,7 +67,7 @@ else
     delete(p)
 end
 % Set batch size
-batchSize = num2str(answer{5});
+batchSize = str2double(answer{5});
 
 % Get save and load location for data
 savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
@@ -117,8 +111,14 @@ end
 
 disp('Finished Configuration')
 %% Build circuits of size 1 to n
-mpiprofile on
+if parallelloop
+    mpiprofile on
+else
+    profile on
+end
+
 t1 = tic;
+timestart=datetime;
 
 % Initialize variables for timing
 variablesInMatFile = who(matObj);
@@ -130,7 +130,7 @@ else
 end
 
 % Main loop
-hWaitbar = waitbar(0, 'Processing circuits with 1 element.', 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+hWaitbar = waitbar(0, 'Starting Circuit Generation.', 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
 for numElements = currentNumElements:maxElements
     t2 = tic;
     fprintf('Processing circuits with %d elements\n', numElements);
@@ -140,17 +140,18 @@ for numElements = currentNumElements:maxElements
         varname_curr = ['CircStr' num2str(numElements)];
         variablesInMatFile = who(matObj);
         if ~ismember(varname_curr, variablesInMatFile)
-            currentCircuits = elementtypes;
-            matObj.(varname_curr) = string(currentCircuits);
+            currentCircuits = string(elementtypes);
+            matObj.(varname_curr) = currentCircuits;
         else
-            currentCircuits = cellstr(matObj.(varname_curr));
+            currentCircuits = matObj.(varname_curr);
         end
+
     else
         % Load previous circuits
         varname_prev = ['CircStr' num2str(numElements - 1)];
         variablesInMatFile = who(matObj);
         if ismember(varname_prev, variablesInMatFile)
-            previousCircuits = cellstr(matObj.(varname_prev));
+            previousCircuits = matObj.(varname_prev);
         else
             error(['Previous circuits for numElements = ' num2str(numElements - 1) ' not found in the MAT-file.']);
         end
@@ -158,9 +159,9 @@ for numElements = currentNumElements:maxElements
         % Initialize or load current circuits
         varname_curr = ['CircStr' num2str(numElements)];
         if ismember(varname_curr, variablesInMatFile)
-            currentCircuits = cellstr(matObj.(varname_curr));
+            currentCircuits = matObj.(varname_curr);
         else
-            currentCircuits = {};
+            currentCircuits = strings(0);
         end
 
         % Load or initialize processedMask
@@ -178,7 +179,7 @@ for numElements = currentNumElements:maxElements
         % Total number of unprocessed circuits
         totalUnprocessed = length(unprocessedIndices);
         numBatches = ceil(totalUnprocessed / batchSize);
-        waitbar(0,hWaitbar, ['Iteration 1 out of ' num2str(numBatches)], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+        waitbar(1/numBatches,hWaitbar, ['Iteration 1 out of ' num2str(numBatches)], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
 
         for batchNum = 1:numBatches
             % Process GUI events to detect button presses
@@ -207,7 +208,7 @@ for numElements = currentNumElements:maxElements
             batchIndices = unprocessedIndices(batchStartIdx:batchEndIdx);
 
             previousCircuitsBatch = previousCircuits(batchIndices);
-            tempCircuits = cell(1, length(previousCircuitsBatch));
+            tempCircuits = cell(length(previousCircuitsBatch), 1);
 
             if parallelloop
                 parfor idx = 1:length(previousCircuitsBatch)
@@ -267,7 +268,7 @@ for numElements = currentNumElements:maxElements
         [fitresult2, ~] = createExpFit((1:numElements)', elapsedtime(1:numElements, 1));
         timenow = datetime;
         estimatenextdatetime = timenow + seconds(fitresult.a * exp(fitresult.b * (numElements + 1)) + fitresult.c);
-        estimatedfinishtime = timenow + seconds(fitresult2.a * exp(fitresult2.b * (maxElements)) + fitresult2.c);
+        estimatedfinishtime = timestart + seconds(fitresult2.a * exp(fitresult2.b * (maxElements)) + fitresult2.c);
         disp(['Estimated time when ' num2str(numElements + 1) ' element size circuits are complete: ' char(estimatenextdatetime)]);
         disp(['Estimated time when ' num2str(maxElements) ' element size circuits are complete: ' char(estimatedfinishtime)]);
     end
@@ -285,25 +286,25 @@ for numElements = currentNumElements:maxElements
 end
 
 disp('Finished');
-mpiprofile viewer
-
-% % Close the cancel button window if still open
-% if isvalid(cancelFig)
-%     delete(cancelFig);
-% end
-%% Display results
-% may take forever if max elements is greater than 4
-disp('Unique and Simplified Circuit Configurations:');
-for k = 1:maxElements
-    fprintf('\nCircuits with %d element(s):\n', k);
-    circuits = CircStr{k};
-    % Sort and display
-    sortedCircuits = sort(circuits);
-    for i = 1:length(sortedCircuits)
-        disp([' - ' sortedCircuits{i}]);
-    end
+if parallelloop
+    mpiprofile viewer
+else
+    profile viewer
 end
-clear circuits sortedCircuits
+
+%% Display results
+% % may take forever if max elements is greater than 4
+% disp('Unique and Simplified Circuit Configurations:');
+% for k = 1:maxElements
+%     fprintf('\nCircuits with %d element(s):\n', k);
+%     circuits = CircStr{k};
+%     % Sort and display
+%     sortedCircuits = sort(circuits);
+%     for i = 1:length(sortedCircuits)
+%         disp([' - ' sortedCircuits{i}]);
+%     end
+% end
+% clear circuits sortedCircuits
 
 %% helper functions
 % Function to perform the save operation
