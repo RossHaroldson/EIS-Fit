@@ -44,10 +44,10 @@ canoncir2 = getCanonicalForm(flatcir2, elementTypes, numElementTypes, modes)
 %% Configuration
 
 % Initialize parameters
-maxElements = 6;
+maxElements = 5;
 
 loadsave = false;
-elementTypes = {'R','C','W','T','L'};
+elementTypes = {'R','C','W','T','L','G'};
 numElementTypes = length(elementTypes);
 modes = {'s','p'};
 numModes = length(modes);
@@ -68,7 +68,7 @@ CircStr = cell(maxElements, 1);
 circuitCount = 0; % Total number of circuits
 
 %% Build circuits of size 1 to n
-profile on
+profile on -historysize 5e7
 for numElements = 1:maxElements
     fprintf('\nProcessing circuits with %d elements...\n', numElements);
     tic
