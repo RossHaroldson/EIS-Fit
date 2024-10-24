@@ -18,6 +18,4 @@ function [oc, numPairs] = findParentheses(str)
         cl(1) = [];
     end
     numPairs = size(oc, 1);
-    % sort rows by ascending '(' index
-    oc = sortrows(oc);
 end

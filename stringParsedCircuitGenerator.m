@@ -25,13 +25,11 @@ isValidCircuit(cir)
 for i=1:length(CircStrOld)
     DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
 end
-%}
 
 elementTypes = {'R','C','W','T','L'};
 numElementTypes = length(elementTypes);
 modes = {'s','p'};
 
-%{
 strcir1 = 's(R,L,p(p(s(R,p(R,R,C)),C),s(R,p(T,T),p(T,T))))'
 flatcir1 = flattenCircuit(strcir1,modes,elementTypes)
 canoncir1 = getCanonicalForm(flatcir1, elementTypes, numElementTypes, modes)
@@ -68,6 +66,7 @@ CircStr = cell(maxElements, 1);
 circuitCount = 0; % Total number of circuits
 
 %% Build circuits of size 1 to n
+profile off
 profile on -historysize 5e7
 for numElements = 1:maxElements
     fprintf('\nProcessing circuits with %d elements...\n', numElements);
@@ -85,7 +84,7 @@ for numElements = 1:maxElements
             for e = 1:numElementTypes
                 % Combine element e with circuit c
                 for m = 1:numModes
-                    newCircuit = append(modes{m}, '(', elementTypes{e}, ',', CircStr{numElements-1}{c}, ')');
+                    newCircuit = [modes{m} '(' elementTypes{e} ',' CircStr{numElements-1}{c} ')'];
                     [canonicalCircuit, good] = processCircuit(newCircuit, numElements, CircStr{numElements}, elementTypes, numElementTypes, modes);
                     if good
                         CircStr{numElements}{end+1} = canonicalCircuit;
@@ -94,7 +93,7 @@ for numElements = 1:maxElements
                 % Insert element e into components of c
                 [oc, numComps] = findParentheses(CircStr{numElements-1}{c});
                 for idx = 1:numComps
-                    newCircuit = insertAfter(CircStr{numElements-1}{c}, oc(idx,1), [elementTypes{e}, ',']);
+                    newCircuit = insertAfter(CircStr{numElements-1}{c}, oc(idx,2)-1, [',', elementTypes{e}]);
                     [canonicalCircuit, good] = processCircuit(newCircuit, numElements, CircStr{numElements}, elementTypes, numElementTypes, modes);
                     if good
                         CircStr{numElements}{end+1} = canonicalCircuit;
@@ -106,7 +105,7 @@ for numElements = 1:maxElements
                     for idx = 1:numElem(el)
                         for m = 1:numModes
                             % Insert chars
-                            str = append(modes{m}, '(', elementTypes{e}, ',');
+                            str = [modes{m} '(' elementTypes{e} ','];
                             bigstr = insertAfter(CircStr{numElements-1}{c}, elem{el}(idx), ')');
                             newCircuit = insertAfter(bigstr, elem{el}(idx)-1, str);
                             % Process circuit
@@ -135,6 +134,7 @@ for numElements = 1:maxElements
     end
 end
 disp('Finished');
+profsave
 profile viewer
 
 %% Display results

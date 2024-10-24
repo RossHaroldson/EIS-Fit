@@ -1,4 +1,4 @@
-function isValid = isValidCircuit(circuit,modes,elementTypes)
+function isValid = isValidCircuit(circuit, elementTypes)
 % Recursively search the circuit components until it finds a R,C, or L
 % in series or parallel directly with a diffusion element W,T,O, or G
 % and return false if it does find it or true if it doesn't
@@ -43,7 +43,7 @@ function isValid = isValidCircuit(circuit,modes,elementTypes)
 
     % Rule 3: Check if a R,C, or L in series or parallel directly with a 
     % diffusion element W,T,O, or G
-    isValid = Diff_Rule(circuit,modes,elementTypes);
+    isValid = Diff_Rule(circuit, elementTypes);
     if ~isValid
         return;
     end

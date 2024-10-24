@@ -8,7 +8,7 @@ function isValid = RC_Rule(circuit)
             % isolate the series component
             component = circuit(oc(idx,1)-1:oc(idx,2));
             % check for subcomponents
-            if ~any(ismember(['s','p'], component(2:end)))
+            if ~any(ismember(['s','p'], component(3:end-1)))
                 % if no subcomponents, check for other element types
                 if ~any(ismember(['L','W','T','O','G'], component))
                     % if none, series component must only contain R and C

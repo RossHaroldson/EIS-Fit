@@ -39,8 +39,8 @@ function canonicalCircuit = getCanonicalForm(circuit, elementTypes, numElementTy
     comps = sort(comps);
 
     % Combine elements and components back into a string
-    combined = strjoin([elem, comps], ',');
+    canonicalContent = strjoin([elem, comps], ',');
 
     % Construct the canonical circuit string
-    canonicalCircuit = [mode '(' combined ')'];
+    canonicalCircuit = [mode '(' canonicalContent ')'];
 end
