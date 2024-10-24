@@ -21,30 +21,27 @@ isValidCircuit(cir)
 for i=1:length(CircStrOld)
     DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
 end
-
 %% Configuration
 prompt = {'Max number of elements: ',...
-    'Element types (R, C, L, W, T, O, G,...): ',...
+    'Element types (R, C, L, W, T, G,...): ',...
     'Parallel computing with more cores? (1 for yes, 0 for no): ',...
     'Parallel computing number of workers (Leave blank for default size): ',...
     'Batch Size for saving: '};
 dlgtitle = 'Configuration';
 fieldsize = [1 45; 1 45; 1 45; 1 45; 1 45];
-definput = {'10','R,C,L,W,T,G','1','16','4000'};
+definput = {'5','R,C,L,W,T,G','1','2','1000'};
 answer = inputdlg(prompt,dlgtitle,fieldsize,definput);
 
 % Go through answers
 maxElements = str2double(answer{1});
 elements = unique(answer{2}(isletter(answer{2})));
-elementtypes=cell(length(elements),1);
-for i=1:length(elements)
-    elementtypes{i,1} = elements(i);
-end
+elementtypes = string(elements(:));
+
 if str2double(answer{3})
-    % Delete any exisiting pool
+    % Delete any existing pool
     p = gcp('nocreate');
     delete(p)
-    parallelloop=true;
+    parallelloop = true;
     % create cluster object c
     c = parcluster;
     if ~isnan(str2double(answer{4}))
@@ -54,12 +51,12 @@ if str2double(answer{3})
         catch ME
             disp(['Failed to create cluster with input size: ' num2str(answer{4})]);
             disp('Creating pool with default size');
-            p=c.parpool;
+            p = c.parpool;
             rethrow(ME)
         end
     else
         disp('Creating pool with default size');
-        p=c.parpool;
+        p = c.parpool;
     end
 else
     parallelloop = false;
@@ -161,7 +158,7 @@ for numElements = currentNumElements:maxElements
         if ismember(varname_curr, variablesInMatFile)
             currentCircuits = matObj.(varname_curr);
         else
-            currentCircuits = strings(0);
+            currentCircuits = strings(0,1);
         end
 
         % Load or initialize processedMask
@@ -214,22 +211,22 @@ for numElements = currentNumElements:maxElements
                 parfor idx = 1:length(previousCircuitsBatch)
                     circuitStr = previousCircuitsBatch{idx};
                     circuit = parseCircuitString(circuitStr);
-                    localNewCircuits = createNewCircuits(elementtypes, {}, circuit, numElements);
+                    localNewCircuits = createNewCircuits(elementtypes, strings(0,1), circuit, numElements);
                     tempCircuits{idx} = localNewCircuits;
                 end
             else
                 for idx = 1:length(previousCircuitsBatch)
                     circuitStr = previousCircuitsBatch{idx};
                     circuit = parseCircuitString(circuitStr);
-                    localNewCircuits = createNewCircuits(elementtypes, {}, circuit, numElements);
+                    localNewCircuits = createNewCircuits(elementtypes, strings(0,1), circuit, numElements);
                     tempCircuits{idx} = localNewCircuits;
                 end
             end
 
             % Concatenate results and update current circuits
             disp('Saving data after current batch')
-            allNewCircuits = [tempCircuits{:}];
-            currentCircuits = [currentCircuits; allNewCircuits'];
+            allNewCircuits = vertcat(tempCircuits{:});
+            currentCircuits = [currentCircuits; allNewCircuits];
 
             % Remove duplicates in current batch to reduce data size
             currentCircuits = unique(currentCircuits);
@@ -238,11 +235,8 @@ for numElements = currentNumElements:maxElements
             processedMask(batchIndices) = true;
             matObj.(varname_processedMask) = processedMask;
 
-            % Convert currentCircuits to string array
-            currentCircuits_str = string(currentCircuits);
-
             % Write currentCircuits to matfile
-            matObj.(varname_curr) = currentCircuits_str;
+            matObj.(varname_curr) = currentCircuits;
 
             % Update currentNumElements in matfile
             matObj.currentNumElements = numElements;

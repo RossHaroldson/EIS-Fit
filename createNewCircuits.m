@@ -1,6 +1,6 @@
-function localNewCircuits = createNewCircuits(elementtypes,localNewCircuits,circuit,numElements)
+function localNewCircuits = createNewCircuits(elementtypes, localNewCircuits, circuit, numElements)
 for e = 1:length(elementtypes)
-    element = elementtypes{e};
+    element = elementtypes(e);
     % Insert element into the circuit
     newCircuitStructs = insertElement(circuit, element);
 
@@ -12,10 +12,9 @@ for e = 1:length(elementtypes)
             % Simplify and validate
             canonicalStr = getCanonicalForm(newCircuit);
             if ~ismember(canonicalStr, localNewCircuits)
-                localNewCircuits{end+1} = canonicalStr;
+                localNewCircuits(end+1,1) = canonicalStr;
             end
         end
     end
 end
-
 end

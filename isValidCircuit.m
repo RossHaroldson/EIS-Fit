@@ -72,7 +72,7 @@ function isValid = Diff_Rule(circuit)
 isValid=true;
 if isfield(circuit, 'components')
     comps = circuit.components;
-    types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
+    types = string(cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false));
     if (any(ismember(types, {'R', 'C', 'L'})) && any(ismember(types, {'W', 'O', 'T', 'G'})))
         isValid = false;
         return;

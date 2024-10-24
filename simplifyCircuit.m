@@ -51,19 +51,19 @@ function uniqueComps = uniqueComponents(components)
     % but only for elements of types R, C, L, or W
 
     elementTypesToReduce = {'R', 'C', 'L', 'W'};
-    uniqueComps = {};
-    seenReprs = {};
+    uniqueComps = {};            % Cell array to store components
+    seenReprs = strings(0, 1);   % Initialize as empty string array
 
     for i = 1:length(components)
         comp = components{i};
-        repr = getCanonicalForm(comp);
+        repr = getCanonicalForm(comp);  % Assuming this returns a string
 
         % Determine if the component is an element of types to reduce
         if strcmp(comp.type, 'element') && ismember(comp.value, elementTypesToReduce)
             % Only remove duplicates for specified element types
             if ~ismember(repr, seenReprs)
                 uniqueComps{end+1} = comp;
-                seenReprs{end+1} = repr;
+                seenReprs(end+1, 1) = repr;  % Append to string array
             end
         else
             % For other elements or circuits, include all
