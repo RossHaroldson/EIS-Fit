@@ -66,44 +66,56 @@ end
 % Set batch size
 batchSize = str2double(answer{5});
 
-% Get save and load location for data
-savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
-if ischar(savefolder)
-    savefilepath = fullfile(savefolder, 'circuit_data.mat');
-    savedata = true;
-else
-    savefilepath = '';
-    savedata = false;
-end
-
-% Initialize circuit storage
-% We'll use a matfile object for incremental saving
-matObj = matfile(savefilepath, 'Writable', true);
-
 % Ask to load data from file
-[loadFileName, loaddatafilepath] = uigetfile('*.mat', 'Choose which data file to load');
-if ischar(loaddatafilepath)
+loaddatafolderpath = uigetdir('C:\', 'Choose which Tall data folder to load');
+
+if ischar(loaddatafolderpath)
+    d = dir(loaddatafolderpath);
+    isub = [d(:).isdir]; %# returns logical vector
+    nameSubFolds = {d(isub).name}';
+    nameSubFolds(ismember(nameSubFolds,{'.','..'})) = [];
     disp('Loading saved data.')
-    matObj = matfile(fullfile(loaddatafilepath, loadFileName), 'Writable', true);
+    for i = 1:length(nameSubFolds)
+        try
+            tds.(nameSubFolds{i}) = datastore(fullfile(loaddatafolderpath, nameSubFolds{i}));
+            t.(nameSubFolds{i}) = tall(tds.(nameSubFolds{i}));
+            disp(['Loaded ' nameSubFolds{i}])
+        catch ME
+            disp(['Failed to datastore ' fullfile(loaddatafolderpath, nameSubFolds{i})])
+            rethrow(ME)
+        end
+    end
+    % load small data .mat file
+    load(fullfile(loaddatafolderpath, 'circuit_data.mat'))
     loadeddata = true;
 else
     loadeddata = false;
+    currentNumElements = 1;
+end
+
+% Get save and load location for data
+savefolder = uigetdir('C:\', 'Specify folder to save generated circuit configurations (Could be very large)');
+if ischar(savefolder)
+    %savefilepath = fullfile(savefolder, 'circuit_data.mat');
+    savedata = true;
+else
+    %savefilepath = '';
+    savefolder=loaddatafolderpath;
+    savedata = false;
 end
 
 % Initialize or load variables
-if loadeddata
-    % Load existing variables from the MAT-file
-    variablesInMatFile = who(matObj);
-    if ismember('currentNumElements', variablesInMatFile)
-        currentNumElements = matObj.currentNumElements;
-    else
-        currentNumElements = 1;
-        matObj.currentNumElements = currentNumElements;
-    end
-else
+if ~loadeddata
     % Initialize variables in the MAT-file
-    matObj.currentNumElements = 1;
+    % matObj.currentNumElements = 1;
     currentNumElements = 1;
+    CircStr1=strings(0,1);
+    t.CircStr1 = tall(CircStr1);
+    t.processedMask1 = tall(true(length(elementtypes)));
+    write(fullfile(savefolder,'CircStr1'),t.CircStr1)
+    write(fullfile(savefolder,'processedMask1'),t.processedMask1)
+    tds.CircStr1 = datastore(fullfile(savefolder, 'CircStr1'));
+    tds.processedMask1 = datastore(fullfile(savefolder, 'processedMask1'));
 end
 
 disp('Finished Configuration')
@@ -118,12 +130,8 @@ t1 = tic;
 timestart=datetime;
 
 % Initialize variables for timing
-variablesInMatFile = who(matObj);
-if ismember('elapsedtime', variablesInMatFile)
-    elapsedtime = matObj.elapsedtime;
-else
+if ~exist('elapsedtime','var')
     elapsedtime = zeros(maxElements, 2);
-    matObj.elapsedtime = elapsedtime;
 end
 
 % Main loop
@@ -132,42 +140,31 @@ for numElements = currentNumElements:maxElements
     t2 = tic;
     fprintf('Processing circuits with %d elements\n', numElements);
     waitbar(0,hWaitbar, ['Processing circuits with ' num2str(numElements) ' elements.'], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+    varname_curr = ['CircStr' num2str(numElements)];
+    varname_prev = ['CircStr' num2str(numElements - 1)];
+    varname_processedMask = ['processedMask' num2str(numElements)];
+
     if numElements == 1
         % Base case: circuits with a single element
-        varname_curr = ['CircStr' num2str(numElements)];
-        variablesInMatFile = who(matObj);
-        if ~ismember(varname_curr, variablesInMatFile)
-            currentCircuits = string(elementtypes);
-            matObj.(varname_curr) = currentCircuits;
-        else
-            currentCircuits = matObj.(varname_curr);
+        if ~isfield(t, varname_curr)
+            t.(varname_curr) = elementtypes;
+            t.(varname_processedMask) = true(length(elementtypes));
+            currentCircuits = gather(t.(varname_curr));
         end
 
     else
-        % Load previous circuits
-        varname_prev = ['CircStr' num2str(numElements - 1)];
-        variablesInMatFile = who(matObj);
-        if ismember(varname_prev, variablesInMatFile)
-            previousCircuits = matObj.(varname_prev);
-        else
-            error(['Previous circuits for numElements = ' num2str(numElements - 1) ' not found in the MAT-file.']);
-        end
-
         % Initialize or load current circuits
-        varname_curr = ['CircStr' num2str(numElements)];
-        if ismember(varname_curr, variablesInMatFile)
-            currentCircuits = matObj.(varname_curr);
+        if isfield(t,varname_curr)
+            currentCircuits = gather(t.(varname_curr));
         else
             currentCircuits = strings(0,1);
         end
 
         % Load or initialize processedMask
-        varname_processedMask = ['processedMask' num2str(numElements)];
-        if ismember(varname_processedMask, variablesInMatFile)
-            processedMask = matObj.(varname_processedMask);
+        if isfield(t, varname_processedMask)
+            processedMask = gather(t.(varname_processedMask));
         else
-            processedMask = false(length(previousCircuits), 1);
-            matObj.(varname_processedMask) = processedMask;
+            processedMask = false(gather(length(t.(varname_prev))), 1);
         end
 
         % Determine unprocessed indices
@@ -204,7 +201,7 @@ for numElements = currentNumElements:maxElements
             batchEndIdx = min(batchNum * batchSize, totalUnprocessed);
             batchIndices = unprocessedIndices(batchStartIdx:batchEndIdx);
 
-            previousCircuitsBatch = previousCircuits(batchIndices);
+            previousCircuitsBatch = gather(t.(varname_prev)(batchIndices));
             tempCircuits = cell(length(previousCircuitsBatch), 1);
 
             if parallelloop
@@ -229,21 +226,17 @@ for numElements = currentNumElements:maxElements
             currentCircuits = [currentCircuits; allNewCircuits];
 
             % Remove duplicates in current batch to reduce data size
-            currentCircuits = unique(currentCircuits);
+            t.(varname_curr) = unique(currentCircuits);
 
             % Update processedMask
             processedMask(batchIndices) = true;
-            matObj.(varname_processedMask) = processedMask;
-
-            % Write currentCircuits to matfile
-            matObj.(varname_curr) = currentCircuits;
+            t.(varname_processedMask) = processedMask;
 
             % Update currentNumElements in matfile
-            matObj.currentNumElements = numElements;
-
-            % Save elapsed time
-            matObj.elapsedtime = elapsedtime;
+            currentNumElements = numElements;
             
+            save(fullfile(savefolderpath, 'circuit_data.mat'),currentNumElements,elapsedtime)
+            write(t.(varname_curr))
             drawnow;
             disp([char(datetime) ' : Saved after processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
         end
@@ -253,10 +246,7 @@ for numElements = currentNumElements:maxElements
     elapsedtime(numElements, 1) = toc(t1);
     elapsedtime(numElements, 2) = toc(t2);
 
-    % Save elapsed time to matfile
-    matObj.elapsedtime = elapsedtime;
-
-    disp(['Number of circuits made with ' num2str(numElements) ' elements were ' num2str(length(currentCircuits)) ' at ' char(datetime)]);
+    disp(['Number of circuits made with ' num2str(numElements) ' elements were ' num2str(gather(length(currentCircuits))) ' at ' char(datetime)]);
     if numElements > 3
         [fitresult, ~] = createExpFit((1:numElements)', elapsedtime(1:numElements, 2));
         [fitresult2, ~] = createExpFit((1:numElements)', elapsedtime(1:numElements, 1));
@@ -271,9 +261,10 @@ for numElements = currentNumElements:maxElements
     drawnow; % Process GUI events
     if ~ishandle(hWaitbar)
         disp('Cancellation requested. Saving progress and exiting.');
-        matObj.currentNumElements = numElements + 1;
-        matObj.elapsedtime = elapsedtime;
-        matObj.(varname_processedMask) = processedMask;
+        currentNumElements = numElements + 1;
+        elapsedtime = elapsedtime;
+        t.(varname_processedMask) = processedMask;
+        save(fullfile(savefolderpath, 'circuit_data.mat'),currentNumElements,elapsedtime)
         disp('Finished Saving and Returning');
         return
     end
@@ -285,24 +276,3 @@ if parallelloop
 else
     profile viewer
 end
-
-%% Display results
-% % may take forever if max elements is greater than 4
-% disp('Unique and Simplified Circuit Configurations:');
-% for k = 1:maxElements
-%     fprintf('\nCircuits with %d element(s):\n', k);
-%     circuits = CircStr{k};
-%     % Sort and display
-%     sortedCircuits = sort(circuits);
-%     for i = 1:length(sortedCircuits)
-%         disp([' - ' sortedCircuits{i}]);
-%     end
-% end
-% clear circuits sortedCircuits
-
-%% helper functions
-% Function to perform the save operation
-% function saveDataFunction(filepath, dataStruct)
-%     save(filepath, '-struct', 'dataStruct', '-v7.3');
-%     disp([char(datetime) ' Finished saving data'])
-% end
