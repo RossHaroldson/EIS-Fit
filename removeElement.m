@@ -1,10 +1,10 @@
 function canonCircuit = removeElement(circuit,idx,elementTypes)
-% remove element at idx from circuit (canonical char vector)
+% remove element at idx from canonical circuit string
 % reorganize, simplify, and canonize new circuit
-    % start with copy of circuit
-    newCircuit = circuit;
-    % if circuit(idx) is an element
-    if any(ismember(circuit(idx),elementTypes))
+    % start with copy of circuit as a char vector
+    newCircuit = convertStringsToChars(circuit);
+    % check if newCircuit(idx) is an element
+    if any(ismember(newCircuit(idx),elementTypes))
         % locate all parentheses pairs
         [oc,~] = findParentheses(newCircuit);
         % get parentheses pairs that open before idx
