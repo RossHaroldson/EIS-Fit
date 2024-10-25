@@ -29,7 +29,7 @@ prompt = {'Max number of elements: ',...
     'Batch Size for saving: '};
 dlgtitle = 'Configuration';
 fieldsize = [1 45; 1 45; 1 45; 1 45; 1 45];
-definput = {'5','R,C,L,W,T,G','1','2','1000'};
+definput = {'6','R,C,L,W,T,G','1','2','1000'};
 answer = inputdlg(prompt,dlgtitle,fieldsize,definput);
 
 % Go through answers
@@ -65,26 +65,25 @@ else
 end
 % Set batch size
 batchSize = str2double(answer{5});
-
+saveFiles=struct();
 % Get save and load location for data
-savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
+savefolder = uigetdir('C:\', 'Specify folder to save generated circuit configurations (Could be very large)');
 if ischar(savefolder)
-    savefilepath = fullfile(savefolder, 'circuit_data.mat');
     savedata = true;
 else
-    savefilepath = '';
     savedata = false;
 end
 
-% Initialize circuit storage
-% We'll use a matfile object for incremental saving
-matObj = matfile(savefilepath, 'Writable', true);
-
 % Ask to load data from file
-[loadFileName, loaddatafilepath] = uigetfile('*.mat', 'Choose which data file to load');
-if ischar(loaddatafilepath)
+loadfolder = uigetdir(savefolder, 'Choose which data folder to load');
+if ischar(loadfolder)
     disp('Loading saved data.')
-    matObj = matfile(fullfile(loaddatafilepath, loadFileName), 'Writable', true);
+    list=dir(fullfile(loadfolder,'*.mat'));
+    if length(list) >= 0
+        for i=1:length(list)
+            saveFiles.(list(i).name(1:end-4)) = matfile(fullfile(loadfolder,list(i).name), 'Writable', true);
+        end
+    end
     loadeddata = true;
 else
     loadeddata = false;
@@ -93,17 +92,35 @@ end
 % Initialize or load variables
 if loadeddata
     % Load existing variables from the MAT-file
-    variablesInMatFile = who(matObj);
-    if ismember('currentNumElements', variablesInMatFile)
-        currentNumElements = matObj.currentNumElements;
+    if isfield('currentNumElements', saveFiles)
+        currentNumElements = saveFiles.currentNumElements.currentNumElements;
     else
         currentNumElements = 1;
-        matObj.currentNumElements = currentNumElements;
+        if savedata
+            saveFiles.currentNumElements = matfile(fullfile(savefolder,'currentNumElements.mat'), 'Writable', true);
+            saveFiles.currentNumElements.currentNumElements = currentNumElements;
+        end
+    end
+    if isfield('elapsedTime', saveFiles)
+        elapsedTime = saveFiles.elapsedTime.elapsedTime;
+    else
+        elapsedTime = zeros(maxElements, 2);
+        saveFiles.elapsedTime.elapsedTime = elapsedTime;
+        if savedata
+            saveFiles.elapsedTime = matfile(fullfile(savefolder,'elapsedTime.mat'), 'Writable', true);
+            saveFiles.elapsedTime.elapsedTime = elapsedTime;
+        end
     end
 else
     % Initialize variables in the MAT-file
-    matObj.currentNumElements = 1;
     currentNumElements = 1;
+    elapsedTime = zeros(maxElements, 2);
+    if savedata
+        saveFiles.currentNumElements = matfile(fullfile(savefolder,'currentNumElements.mat'), 'Writable', true);
+        saveFiles.currentNumElements.currentNumElements = currentNumElements;
+        saveFiles.elapsedTime = matfile(fullfile(savefolder,'elapsedTime.mat'), 'Writable', true);
+        saveFiles.elapsedTime.elapsedTime = elapsedTime;
+    end
 end
 
 disp('Finished Configuration')
@@ -117,57 +134,49 @@ end
 t1 = tic;
 timestart=datetime;
 
-% Initialize variables for timing
-variablesInMatFile = who(matObj);
-if ismember('elapsedtime', variablesInMatFile)
-    elapsedtime = matObj.elapsedtime;
-else
-    elapsedtime = zeros(maxElements, 2);
-    matObj.elapsedtime = elapsedtime;
-end
-
 % Main loop
 hWaitbar = waitbar(0, 'Starting Circuit Generation.', 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
 for numElements = currentNumElements:maxElements
     t2 = tic;
     fprintf('Processing circuits with %d elements\n', numElements);
     waitbar(0,hWaitbar, ['Processing circuits with ' num2str(numElements) ' elements.'], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+    varname_curr = ['CircStr' num2str(numElements)];
+    varname_prev = ['CircStr' num2str(numElements - 1)];
+    varname_processedMask = ['processedMask' num2str(numElements)];
     if numElements == 1
         % Base case: circuits with a single element
-        varname_curr = ['CircStr' num2str(numElements)];
-        variablesInMatFile = who(matObj);
-        if ~ismember(varname_curr, variablesInMatFile)
+        if ~isfield(saveFiles,varname_curr)
             currentCircuits = string(elementtypes);
-            matObj.(varname_curr) = currentCircuits;
         else
-            currentCircuits = matObj.(varname_curr);
+            currentCircuits = saveFiles.(varname_curr).(varname_curr);
+        end
+        if ~isfield(saveFiles,varname_processedMask)
+            processedMask = true(length(elementtypes), 1);
+        else
+            processedMask = saveFiles.(varname_processedMask).(varname_processedMask);
         end
 
     else
         % Load previous circuits
-        varname_prev = ['CircStr' num2str(numElements - 1)];
-        variablesInMatFile = who(matObj);
-        if ismember(varname_prev, variablesInMatFile)
-            previousCircuits = matObj.(varname_prev);
+        if isfield(saveFiles,varname_prev)
+            previousCircuits = saveFiles.(varname_prev).(varname_prev);
         else
             error(['Previous circuits for numElements = ' num2str(numElements - 1) ' not found in the MAT-file.']);
         end
 
         % Initialize or load current circuits
         varname_curr = ['CircStr' num2str(numElements)];
-        if ismember(varname_curr, variablesInMatFile)
-            currentCircuits = matObj.(varname_curr);
+        if isfield(saveFiles, varname_curr)
+            currentCircuits = saveFiles.(varname_curr).(varname_curr);
         else
             currentCircuits = strings(0,1);
         end
 
         % Load or initialize processedMask
-        varname_processedMask = ['processedMask' num2str(numElements)];
-        if ismember(varname_processedMask, variablesInMatFile)
-            processedMask = matObj.(varname_processedMask);
+        if isfield(saveFiles,varname_processedMask)
+            processedMask = saveFiles.(varname_processedMask).(varname_processedMask);
         else
             processedMask = false(length(previousCircuits), 1);
-            matObj.(varname_processedMask) = processedMask;
         end
 
         % Determine unprocessed indices
@@ -185,11 +194,30 @@ for numElements = currentNumElements:maxElements
 
             % Check for cancellation before starting the batch
             if ~ishandle(hWaitbar)
-                disp('Cancellation requested. Saving progress and exiting.');
-                matObj.currentNumElements = numElements;
-                matObj.elapsedtime = elapsedtime;
-                matObj.(varname_processedMask) = processedMask;
-                disp('Finished Saving and Returning');
+                disp('Cancellation requested.');
+                if savedata
+                    disp('Saving progress and exiting.');
+                    % save current data
+                    saveFiles.currentNumElements.currentNumElements=numElements;
+                    saveFiles.elapsedTime.elapsedTime=elapsedTime;
+                    disp(['Saving ' varname_processedMask])
+                    if isfield(saveFiles,varname_processedMask)
+                        saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                    else
+                        saveFiles.(varname_processedMask) = matfile(fullfile(savefolder,[varname_processedMask '.mat']), 'Writable', true);
+                        saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                    end
+                    disp(['Saving ' varname_curr])
+                    if isfield(saveFiles,varname_curr)
+                        saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                    else
+                        saveFiles.(varname_curr) = matfile(fullfile(savefolder,[varname_curr '.mat']), 'Writable', true);
+                        saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                    end
+                    disp('Finished Saving and Returning');
+                else
+                    disp('Finished and didnt save data');
+                end
                 return
             else
                 % Update the wait bar
@@ -224,8 +252,8 @@ for numElements = currentNumElements:maxElements
             end
 
             % Concatenate results and update current circuits
-            disp('Saving data after current batch')
-            allNewCircuits = vertcat(tempCircuits{:});
+            disp('Adding new circuits from this batch to main list of current circuits')
+            allNewCircuits = unique(vertcat(tempCircuits{:}));
             currentCircuits = [currentCircuits; allNewCircuits];
 
             % Remove duplicates in current batch to reduce data size
@@ -233,52 +261,91 @@ for numElements = currentNumElements:maxElements
 
             % Update processedMask
             processedMask(batchIndices) = true;
-            matObj.(varname_processedMask) = processedMask;
-
-            % Write currentCircuits to matfile
-            matObj.(varname_curr) = currentCircuits;
-
-            % Update currentNumElements in matfile
-            matObj.currentNumElements = numElements;
-
-            % Save elapsed time
-            matObj.elapsedtime = elapsedtime;
-            
+            if savedata && batchNum ~= numBatches
+                disp('Saving progress and exiting.');
+                % save current data
+                saveFiles.currentNumElements.currentNumElements=numElements;
+                saveFiles.elapsedTime.elapsedTime=elapsedTime;
+                disp(['Saving ' varname_processedMask])
+                if isfield(saveFiles,varname_processedMask)
+                    saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                else
+                    saveFiles.(varname_processedMask) = matfile(fullfile(savefolder,[varname_processedMask '.mat']), 'Writable', true);
+                    saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                end
+                % disp(['Saving ' varname_curr])
+                % if isfield(saveFiles,varname_curr)
+                %     saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                % else
+                %     saveFiles.(varname_curr) = matfile(fullfile(savefolder,[varname_curr '.mat']), 'Writable', true);
+                %     saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                % end
+                disp('Finished Saving per batch');
+            else
+                saveFiles.currentNumElements.currentNumElements=numElements;
+                saveFiles.elapsedTime.elapsedTime=elapsedTime;
+                %saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                disp(['updating ' varname_curr])
+                %saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                disp('Finished updating in memory')
+            end
             drawnow;
             disp([char(datetime) ' : Saved after processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
         end
+        processedMask(:) = true;
     end
-
     % Update elapsed time
-    elapsedtime(numElements, 1) = toc(t1);
-    elapsedtime(numElements, 2) = toc(t2);
-
-    % Save elapsed time to matfile
-    matObj.elapsedtime = elapsedtime;
+    elapsedTime(numElements, 1) = toc(t1);
+    elapsedTime(numElements, 2) = toc(t2);
 
     disp(['Number of circuits made with ' num2str(numElements) ' elements were ' num2str(length(currentCircuits)) ' at ' char(datetime)]);
     if numElements > 3
-        [fitresult, ~] = createExpFit((1:numElements)', elapsedtime(1:numElements, 2));
-        [fitresult2, ~] = createExpFit((1:numElements)', elapsedtime(1:numElements, 1));
+        [fitresult, ~] = createExpFit((1:numElements)', elapsedTime(1:numElements, 2));
+        [fitresult2, ~] = createExpFit((1:numElements)', elapsedTime(1:numElements, 1));
         timenow = datetime;
         estimatenextdatetime = timenow + seconds(fitresult.a * exp(fitresult.b * (numElements + 1)) + fitresult.c);
         estimatedfinishtime = timestart + seconds(fitresult2.a * exp(fitresult2.b * (maxElements)) + fitresult2.c);
         disp(['Estimated time when ' num2str(numElements + 1) ' element size circuits are complete: ' char(estimatenextdatetime)]);
         disp(['Estimated time when ' num2str(maxElements) ' element size circuits are complete: ' char(estimatedfinishtime)]);
     end
-
+    % save or update data
+    if savedata
+        disp('Saving progress');
+        % save current data
+        saveFiles.currentNumElements.currentNumElements=numElements;
+        saveFiles.elapsedTime.elapsedTime=elapsedTime;
+        disp(['Saving ' varname_processedMask])
+        if isfield(saveFiles,varname_processedMask)
+            saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+        else
+            saveFiles.(varname_processedMask) = matfile(fullfile(savefolder,[varname_processedMask '.mat']), 'Writable', true);
+            saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+        end
+        disp(['Saving ' varname_curr])
+        if isfield(saveFiles,varname_curr)
+            saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+        else
+            saveFiles.(varname_curr) = matfile(fullfile(savefolder,[varname_curr '.mat']), 'Writable', true);
+            saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+        end
+        disp('Finished Saving');
+    else
+        saveFiles.currentNumElements.currentNumElements=numElements;
+        saveFiles.elapsedTime.elapsedTime=elapsedTime;
+        saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+        saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+        disp('Updated data');
+    end
     % Check for cancellation after completing numElements
     drawnow; % Process GUI events
     if ~ishandle(hWaitbar)
-        disp('Cancellation requested. Saving progress and exiting.');
-        matObj.currentNumElements = numElements + 1;
-        matObj.elapsedtime = elapsedtime;
-        matObj.(varname_processedMask) = processedMask;
-        disp('Finished Saving and Returning');
+        disp('Cancellation requested.');
         return
+    else
+        
     end
 end
-
+delete(hWaitbar);
 disp('Finished');
 if parallelloop
     mpiprofile viewer
