@@ -43,7 +43,7 @@ try
     % Confidence intervals estimation is complex here and not provided
     fit.simplex.coeffCI = NaN(length(v0), 2);
 catch ME
-    warning('Simplex method failed: %s', ME.message);
+    warning(ME.identifier, 'Simplex method failed: %s', ME.message);
     fit.simplex = [];
 end
 
@@ -68,7 +68,7 @@ try
     ci = nlparci(vfit, residuals, 'jacobian', J);
     fit.levenbergMarquardt.coeffCI = ci;
 catch ME
-    warning('Levenberg-Marquardt method failed: %s', ME.message);
+    warning(ME.identifier,'Levenberg-Marquardt method failed: %s',ME.message);
     fit.levenbergMarquardt = [];
 end
 
@@ -92,8 +92,8 @@ try
     % Confidence intervals using nlparci
     ci = nlparci(vfit, residuals, 'jacobian', J);
     fit.trustRegion.coeffCI = ci;
-catch ME
-    warning('Trust-Region-Reflective method failed: %s', ME.message);
+catch ME 
+    warning(ME.identifier,'Trust-Region-Reflective method failed: %s', ME.message);
     fit.trustRegion = [];
 end
 
