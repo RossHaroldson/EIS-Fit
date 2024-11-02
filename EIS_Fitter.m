@@ -15,7 +15,7 @@ eps0 = 8.85418781e-12;  % Farads/meter;
 
 % diff functions
 Yofun = @(Area,C,D) Area.*q^2.*C.*sqrt(D)./kb./T;
-Bfun = @(delta,D) delta./sqrt(D);
+Bfun = @(thickness,D) thickness./sqrt(D);
 
 % impedance functions
 angfreq = @(f) 2*pi*f;
@@ -39,11 +39,31 @@ FinGerOp= @(w,Yo,k,d,D) coth(d.*sqrt((k1+1j.*w)./D))./sqrt((k1+1j.*w).*D);
 
 % Initalize parameters
 freq = logspace(6,-4,100);
-area = 1; % in meters^2
+area = 4e-6; % in 2mm x 2mm in meters^2
+thickness = 5e-7; % in 500nm meters
 %% Import Data folder
 % import all EIS data from a folder
-
+% get folder with data
+% import all .dta files in that folder as tables into a struct.
+importfolder=uigetdir(fileparts(matlab.desktop.editor.getActiveFilename),'Choose which folder of data to import');
+filelist = dir([importfolder '\*.dta']);
+measurements = struct();
+for i = 1:length(filelist)
+    % import each file to the measurements struct
+    measurements(i).table = importGamryDTAfile(fullfile(filelist(i).folder,filelist(i).name));
+    measurements(i).name = filelist(i).name(1:end-4);
+    measurements(i).folder = filelist(i).folder;
+end
 %% Prepare fitting
 % gather any relavent data before starting fitting
-
+% prepare guess circuit(s)
+gcirc1='s(R,p(C,R))'; % randles circuit
+gcirc2='s(R,p(s(R,p(R,C)),C,s(p(O,O),p(O,O))))';
+gcirc3='s(R,L,p(s(R,p(R,C)),C,s(p(O,O),p(O,O))))';
+% convert circuits to function handles
+[gcircfun1, cirvar1] = CirStr2FuncHan(gcirc1);
+[gcircfun2, cirvar2] = CirStr2FuncHan(gcirc2);
+[gcircfun3, cirvar3] = CirStr2FuncHan(gcirc3);
 %% Start fitting
+
+%% Plot fits and errors
