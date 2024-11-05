@@ -1,381 +1,375 @@
-% Equivilent Circuit Generator
-% This script is for generating all possible configurations of circuits
-% given a max number of elements and element types and taking into account
-% rules for valid circuit configuration. Circuit configurations are build 
-% recursively to minimize the number of invalid configurations. 
-
-% test
+% Equivalent Circuit Generator
+% This test script is for generating all possible configurations of circuits
+% given a max number of elements and element types, taking into account
+% rules for valid circuit configurations. Circuit configurations are built 
+% recursively to minimize the number of invalid configurations.
 
 %% Clear everything to start from scratch
 clear all
-clc
-%% Test commands
-for i=1:6
-    DiffCircStr{i}=CircStrOld{i}(~ismember(CircStrOld{i},CircStrNew{i}));
+profile off
+%% Tests
+%strcir='s(R,L,p(p(s(R,p(R,C)),C),s(R,p(O,O),p(O,O))))'
+strcir='s(R,L,p(p(s(R,p(R,C)),C,s(p(O,O),p(O,O)))))'
+%strcir='p(T,s(R,T))'
+%strcir='s(R,O,L)'
+cir=parseCircuitString(strcir);
+simpcir=simplifyCircuitString(strcir)
+concir=getCanonicalForm(cir)
+cir=parseCircuitString(concir);
+isValidCircuit(cir)
+%% Tests
+for i=1:length(CircStrOld)
+    DiffCircStr{i}=CircStrNew{i}(~ismember(CircStrNew{i},CircStrOld{i}));
 end
 %% Configuration
+prompt = {'Max number of elements: ',...
+    'Element types (R, C, L, W, T, G,...): ',...
+    'Parallel computing with more cores? (1 for yes, 0 for no): ',...
+    'Parallel computing number of workers (Leave blank for default size): ',...
+    'Batch Size for saving: '};
+dlgtitle = 'Configuration';
+fieldsize = [1 45; 1 45; 1 45; 1 45; 1 45];
+definput = {'6','R,C,L,W,T,G','1','2','1000'};
+answer = inputdlg(prompt,dlgtitle,fieldsize,definput);
 
-% Initialize parameters
-maxElements = 6;
-loadsave = false;
-elementtypes = {'R','C','W','T','L'}';
+% Go through answers
+maxElements = str2double(answer{1});
+elements = unique(answer{2}(isletter(answer{2})));
+elementtypes = string(elements(:));
 
+if str2double(answer{3})
+    % Delete any existing pool
+    p = gcp('nocreate');
+    delete(p)
+    parallelloop = true;
+    % create cluster object c
+    c = parcluster;
+    if ~isnan(str2double(answer{4}))
+        % Try to create pool with desired number of workers
+        try
+            p = c.parpool(str2double(answer{4}));
+        catch ME
+            disp(['Failed to create cluster with input size: ' num2str(answer{4})]);
+            disp('Creating pool with default size');
+            p = c.parpool;
+            rethrow(ME)
+        end
+    else
+        disp('Creating pool with default size');
+        p = c.parpool;
+    end
+else
+    parallelloop = false;
+    p = gcp('nocreate');
+    delete(p)
+end
+% Set batch size
+batchSize = str2double(answer{5});
+saveFiles=struct();
 % Get save and load location for data
-savefolder = uigetdir('C:\', 'Specify folder to save and read generated circuit configurations (Could be very large)');
+savefolder = uigetdir('C:\', 'Specify folder to save generated circuit configurations (Could be very large)');
 if ischar(savefolder)
-    savefilepath = {savefolder '\' 'circuit_data.mat'};
     savedata = true;
 else
-    savefilepath = {savefolder '\' 'circuit_data.mat'};
     savedata = false;
 end
 
-% Initialize circuit storage
-CircStr = cell(maxElements, 1);
-circuitCount = 0; % Total number of circuits
+% Ask to load data from file
+loadfolder = uigetdir(savefolder, 'Choose which data folder to load');
+if ischar(loadfolder)
+    disp('Loading saved data.')
+    list=dir(fullfile(loadfolder,'*.mat'));
+    if length(list) >= 0
+        for i=1:length(list)
+            saveFiles.(list(i).name(1:end-4)) = matfile(fullfile(loadfolder,list(i).name), 'Writable', true);
+        end
+    end
+    loadeddata = true;
+else
+    loadeddata = false;
+end
 
+% Initialize or load variables
+if loadeddata
+    % Load existing variables from the MAT-file
+    if isfield('currentNumElements', saveFiles)
+        currentNumElements = saveFiles.currentNumElements.currentNumElements;
+    else
+        currentNumElements = 1;
+        if savedata
+            saveFiles.currentNumElements = matfile(fullfile(savefolder,'currentNumElements.mat'), 'Writable', true);
+            saveFiles.currentNumElements.currentNumElements = currentNumElements;
+        end
+    end
+    if isfield('elapsedTime', saveFiles)
+        elapsedTime = saveFiles.elapsedTime.elapsedTime;
+    else
+        elapsedTime = zeros(maxElements, 2);
+        saveFiles.elapsedTime.elapsedTime = elapsedTime;
+        if savedata
+            saveFiles.elapsedTime = matfile(fullfile(savefolder,'elapsedTime.mat'), 'Writable', true);
+            saveFiles.elapsedTime.elapsedTime = elapsedTime;
+        end
+    end
+else
+    % Initialize variables in the MAT-file
+    currentNumElements = 1;
+    elapsedTime = zeros(maxElements, 2);
+    if savedata
+        saveFiles.currentNumElements = matfile(fullfile(savefolder,'currentNumElements.mat'), 'Writable', true);
+        saveFiles.currentNumElements.currentNumElements = currentNumElements;
+        saveFiles.elapsedTime = matfile(fullfile(savefolder,'elapsedTime.mat'), 'Writable', true);
+        saveFiles.elapsedTime.elapsedTime = elapsedTime;
+    end
+end
+
+disp('Finished Configuration')
 %% Build circuits of size 1 to n
-tic
-for numElements = 1:maxElements
+if parallelloop
+    mpiprofile on
+else
+    profile on
+end
+
+t1 = tic;
+timestart=datetime;
+
+% Main loop
+hWaitbar = waitbar(0, 'Starting Circuit Generation.', 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+for numElements = currentNumElements:maxElements
+    t2 = tic;
     fprintf('Processing circuits with %d elements\n', numElements);
+    waitbar(0,hWaitbar, ['Processing circuits with ' num2str(numElements) ' elements.'], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+    varname_curr = ['CircStr' num2str(numElements)];
+    varname_prev = ['CircStr' num2str(numElements - 1)];
+    varname_processedMask = ['processedMask' num2str(numElements)];
     if numElements == 1
         % Base case: circuits with a single element
-        CircStr{1} = elementtypes;
+        if ~isfield(saveFiles,varname_curr)
+            currentCircuits = string(elementtypes);
+        else
+            currentCircuits = saveFiles.(varname_curr).(varname_curr);
+        end
+        if ~isfield(saveFiles,varname_processedMask)
+            processedMask = true(length(elementtypes), 1);
+        else
+            processedMask = saveFiles.(varname_processedMask).(varname_processedMask);
+        end
+
     else
-        % Initialize storage for circuits of current size
-        newCircuits = {};
-        % Generate combinations of circuits that sum up to numElements
-        for sizeA = 1:numElements-1
-            sizeB = numElements - sizeA;
-            % Generate all combinations
-            for idxA = 1:length(CircStr{sizeA})
-                for idxB = 1:length(CircStr{sizeB})
-                    % Combine in series and parallel
-                    modes = {'s', 'p'};
-                    for m = 1:length(modes)
-                        newCircuit = [modes{m}, '(', CircStr{sizeA}{idxA}, ',', CircStr{sizeB}{idxB}, ')'];
-                        % Simplify and validate the new circuit
-                        simplifiedCircuit = simplifyCircuitString(newCircuit);
-                        if isValidCircuitString(simplifiedCircuit)
-                            % Avoid duplicates
-                            if ~ismember(simplifiedCircuit, newCircuits) && getNumElements(parseCircuitString(simplifiedCircuit)) == numElements
-                                newCircuits{end+1} = simplifiedCircuit;
-                            end
-                        end
+        % Load previous circuits
+        if isfield(saveFiles,varname_prev)
+            previousCircuits = saveFiles.(varname_prev).(varname_prev);
+        else
+            error(['Previous circuits for numElements = ' num2str(numElements - 1) ' not found in the MAT-file.']);
+        end
+
+        % Initialize or load current circuits
+        varname_curr = ['CircStr' num2str(numElements)];
+        if isfield(saveFiles, varname_curr)
+            currentCircuits = saveFiles.(varname_curr).(varname_curr);
+        else
+            currentCircuits = strings(0,1);
+        end
+
+        % Load or initialize processedMask
+        if isfield(saveFiles,varname_processedMask)
+            processedMask = saveFiles.(varname_processedMask).(varname_processedMask);
+        else
+            processedMask = false(length(previousCircuits), 1);
+        end
+
+        % Determine unprocessed indices
+        unprocessedIndices = find(~processedMask);
+
+        % Total number of unprocessed circuits
+        totalUnprocessed = length(unprocessedIndices);
+        numBatches = ceil(totalUnprocessed / batchSize);
+        waitbar(1/numBatches,hWaitbar, ['Iteration 1 out of ' num2str(numBatches)], 'Name', 'Generating Circuits','CreateCancelBtn','delete(gcbf)');
+
+        for batchNum = 1:numBatches
+            % Process GUI events to detect button presses
+            pause(1);
+            drawnow;
+
+            % Check for cancellation before starting the batch
+            if ~ishandle(hWaitbar)
+                disp('Cancellation requested.');
+                if savedata
+                    disp('Saving progress and exiting.');
+                    % save current data
+                    saveFiles.currentNumElements.currentNumElements=numElements;
+                    saveFiles.elapsedTime.elapsedTime=elapsedTime;
+                    disp(['Saving ' varname_processedMask])
+                    if isfield(saveFiles,varname_processedMask)
+                        saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                    else
+                        saveFiles.(varname_processedMask) = matfile(fullfile(savefolder,[varname_processedMask '.mat']), 'Writable', true);
+                        saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
                     end
+                    disp(['Saving ' varname_curr])
+                    if isfield(saveFiles,varname_curr)
+                        saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                    else
+                        saveFiles.(varname_curr) = matfile(fullfile(savefolder,[varname_curr '.mat']), 'Writable', true);
+                        saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                    end
+                    disp('Finished Saving and Returning');
+                else
+                    disp('Finished and didnt save data');
+                end
+                return
+            else
+                % Update the wait bar
+                waitbar(batchNum/numBatches,hWaitbar, ['Processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
+                drawnow;
+                pause(0.1);
+                drawnow;
+            end
+
+            % Define batch indices
+            batchStartIdx = (batchNum - 1) * batchSize + 1;
+            batchEndIdx = min(batchNum * batchSize, totalUnprocessed);
+            batchIndices = unprocessedIndices(batchStartIdx:batchEndIdx);
+
+            previousCircuitsBatch = previousCircuits(batchIndices);
+            tempCircuits = cell(length(previousCircuitsBatch), 1);
+
+            if parallelloop
+                parfor idx = 1:length(previousCircuitsBatch)
+                    circuitStr = previousCircuitsBatch{idx};
+                    circuit = parseCircuitString(circuitStr);
+                    localNewCircuits = createNewCircuits(elementtypes, strings(0,1), circuit, numElements);
+                    tempCircuits{idx} = localNewCircuits;
+                end
+            else
+                for idx = 1:length(previousCircuitsBatch)
+                    circuitStr = previousCircuitsBatch{idx};
+                    circuit = parseCircuitString(circuitStr);
+                    localNewCircuits = createNewCircuits(elementtypes, strings(0,1), circuit, numElements);
+                    tempCircuits{idx} = localNewCircuits;
                 end
             end
+
+            % Concatenate results and update current circuits
+            disp('Adding new circuits from this batch to main list of current circuits')
+            allNewCircuits = unique(vertcat(tempCircuits{:}));
+            currentCircuits = [currentCircuits; allNewCircuits];
+
+            % Remove duplicates in current batch to reduce data size
+            currentCircuits = unique(currentCircuits);
+
+            % Update processedMask
+            processedMask(batchIndices) = true;
+            if savedata && batchNum ~= numBatches
+                disp('Saving progress and exiting.');
+                % save current data
+                saveFiles.currentNumElements.currentNumElements=numElements;
+                saveFiles.elapsedTime.elapsedTime=elapsedTime;
+                disp(['Saving ' varname_processedMask])
+                if isfield(saveFiles,varname_processedMask)
+                    saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                else
+                    saveFiles.(varname_processedMask) = matfile(fullfile(savefolder,[varname_processedMask '.mat']), 'Writable', true);
+                    saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                end
+                % disp(['Saving ' varname_curr])
+                % if isfield(saveFiles,varname_curr)
+                %     saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                % else
+                %     saveFiles.(varname_curr) = matfile(fullfile(savefolder,[varname_curr '.mat']), 'Writable', true);
+                %     saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                % end
+                disp('Finished Saving per batch');
+            else
+                saveFiles.currentNumElements.currentNumElements=numElements;
+                saveFiles.elapsedTime.elapsedTime=elapsedTime;
+                %saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+                disp(['updating ' varname_curr])
+                %saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+                disp('Finished updating in memory')
+            end
+            drawnow;
+            disp([char(datetime) ' : Saved after processing batch ' num2str(batchNum) ' out of ' num2str(numBatches) ' batches of circuit size ' num2str(numElements)]);
         end
-        % Store unique circuits of current size
-        CircStr{numElements} = unique(newCircuits)';
-        newCircuits={};
+        processedMask(:) = true;
     end
-    % Optionally save progress
+    % Update elapsed time
+    elapsedTime(numElements, 1) = toc(t1);
+    elapsedTime(numElements, 2) = toc(t2);
+
+    disp(['Number of circuits made with ' num2str(numElements) ' elements were ' num2str(length(currentCircuits)) ' at ' char(datetime)]);
+    if numElements > 3
+        [fitresult, ~] = createExpFit((1:numElements)', elapsedTime(1:numElements, 2));
+        [fitresult2, ~] = createExpFit((1:numElements)', elapsedTime(1:numElements, 1));
+        timenow = datetime;
+        estimatenextdatetime = timenow + seconds(fitresult.a * exp(fitresult.b * (numElements + 1)) + fitresult.c);
+        estimatedfinishtime = timestart + seconds(fitresult2.a * exp(fitresult2.b * (maxElements)) + fitresult2.c);
+        disp(['Estimated time when ' num2str(numElements + 1) ' element size circuits are complete: ' char(estimatenextdatetime)]);
+        disp(['Estimated time when ' num2str(maxElements) ' element size circuits are complete: ' char(estimatedfinishtime)]);
+    end
+    % save or update data
     if savedata
-        disp('Saving data');
-        save(savefilepath, 'CircStr', '-v7.3');
+        disp('Saving progress');
+        % save current data
+        saveFiles.currentNumElements.currentNumElements=numElements;
+        saveFiles.elapsedTime.elapsedTime=elapsedTime;
+        disp(['Saving ' varname_processedMask])
+        if isfield(saveFiles,varname_processedMask)
+            saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+        else
+            saveFiles.(varname_processedMask) = matfile(fullfile(savefolder,[varname_processedMask '.mat']), 'Writable', true);
+            saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+        end
+        disp(['Saving ' varname_curr])
+        if isfield(saveFiles,varname_curr)
+            saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+        else
+            saveFiles.(varname_curr) = matfile(fullfile(savefolder,[varname_curr '.mat']), 'Writable', true);
+            saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+        end
+        disp('Finished Saving');
+    else
+        saveFiles.currentNumElements.currentNumElements=numElements;
+        saveFiles.elapsedTime.elapsedTime=elapsedTime;
+        saveFiles.(varname_processedMask).(varname_processedMask)  = processedMask;
+        saveFiles.(varname_curr).(varname_curr)  = currentCircuits;
+        disp('Updated data');
     end
-    toc
-    disp(length(CircStr{end}))
+    % Check for cancellation after completing numElements
+    drawnow; % Process GUI events
+    if ~ishandle(hWaitbar)
+        disp('Cancellation requested.');
+        return
+    else
+        
+    end
 end
+delete(hWaitbar);
 disp('Finished');
+if parallelloop
+    mpiprofile viewer
+else
+    profile viewer
+end
+
 %% Display results
-disp('Unique and Simplified Circuit Configurations:');
-for k = 1:maxElements
-    fprintf('\nCircuits with %d element(s):\n', k);
-    circuits = CircStr{k};
-    % Sort and display
-    sortedCircuits = sort(circuits);
-    for i = 1:length(sortedCircuits)
-        disp([' - ' sortedCircuits{i}]);
-    end
-end
-clear circuits sortedCircuits
-%% Helper Functions
+% % may take forever if max elements is greater than 4
+% disp('Unique and Simplified Circuit Configurations:');
+% for k = 1:maxElements
+%     fprintf('\nCircuits with %d element(s):\n', k);
+%     circuits = CircStr{k};
+%     % Sort and display
+%     sortedCircuits = sort(circuits);
+%     for i = 1:length(sortedCircuits)
+%         disp([' - ' sortedCircuits{i}]);
+%     end
+% end
+% clear circuits sortedCircuits
 
-function isValid = isValidCircuitString(circuitStr)
-    % Parse the circuit string into a structure
-    circuit = parseCircuitString(circuitStr);
-    % Check if the circuit is valid based on custom rules
-    isValid = isValidCircuit(circuit);
-end
-
-function simplifiedStr = simplifyCircuitString(circuitStr)
-    % Parse the circuit string into a structure
-    circuit = parseCircuitString(circuitStr);
-    % Simplify the circuit
-    simplifiedCircuit = simplifyCircuit(circuit);
-    % Get the canonical form
-    simplifiedStr = getCanonicalForm(simplifiedCircuit);
-end
-
-function isValid = isValidCircuit(circuit)
-    % Check if the circuit is valid based on custom rules
-    isValid = true;
-
-    % Rule 1: Exclude R in series with C directly connected
-    if strcmp(circuit.type, 'series')
-        comps = circuit.components;
-        if length(comps) == 2
-            if (isElement(comps{1}, 'R') && isElement(comps{2}, 'C')) || ...
-               (isElement(comps{1}, 'C') && isElement(comps{2}, 'R'))
-                isValid = false;
-                return;
-            end
-        end
-    end
-
-    % Rule 2: Exclude R in parallel with L directly connected
-    if strcmp(circuit.type, 'parallel')
-        comps = circuit.components;
-        if length(comps) == 2
-            if (isElement(comps{1}, 'R') && isElement(comps{2}, 'L')) || ...
-               (isElement(comps{1}, 'L') && isElement(comps{2}, 'R'))
-                isValid = false;
-                return;
-            end
-        end
-    end
-
-    % Rule 3: Limit diffusion elements W, O, T, G to 4
-    diffusionElements = {'W', 'O', 'T', 'G'};
-    numDiffusion = countElementType(circuit, diffusionElements);
-    if numDiffusion > 4
-        isValid = false;
-        return;
-    end
-
-    % Rule 4: Limit inductors L to 2
-    numL = countElementType(circuit, {'L'});
-    if numL > 2
-        isValid = false;
-        return;
-    end
-
-    % Rule 5: Limit capacitors C to 4
-    numC = countElementType(circuit, {'C'});
-    if numC > 4
-        isValid = false;
-        return;
-    end
-
-    % Rule 6: Exclude diffusion elements in direct parallel or series with
-    % R, C, L element types
-    if strcmp(circuit.type, 'series') || strcmp(circuit.type, 'parallel')
-        comps = circuit.components;
-        if length(comps) == 2
-            types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
-            if (any(ismember(types, {'R', 'C', 'L'})) && any(ismember(types, {'W', 'O', 'T', 'G'})))
-                isValid = false;
-                return;
-            end
-        end
-    end
-
-    % Rule 7: All circuits must have a single resistor in series with the
-    % rest of the circuit if the circuit has more than 1 element. 
-    % (Geared more toward EIS data)
-    % Doesn't work how i want it because of how it builds circuits
-    % if getNumElements(circuit) >  
-    % if strcmp(circuit.type, 'series')
-    %     comps = circuit.components;
-    %     types = cellfun(@(comp) getElementType(comp), comps, 'UniformOutput', false);
-    %     if any(ismember(types, {'R'}))
-    %         isValid = true;
-    %     else
-    %         isValid = false;
-    %         return;
-    %     end
-    % elseif strcmp(circuit.type, 'parallel')
-    %     isValid = false;
-    %     return;
-    % end
-    % end
-end
-
-function count = countElementType(circuit, elementTypes)
-    % Count the number of elements in the circuit that match the given element types
-    if strcmp(circuit.type, 'element')
-        if any(strcmp(circuit.value, elementTypes))
-            count = 1;
-        else
-            count = 0;
-        end
-    else
-        % Recurse on components
-        count = 0;
-        for i = 1:length(circuit.components)
-            count = count + countElementType(circuit.components{i}, elementTypes);
-        end
-    end
-end
-
-function result = isElement(circuit, elementType)
-    % Check if the circuit is a specific element type
-    result = strcmp(circuit.type, 'element') && any(strcmp(circuit.value, elementType));
-end
-
-function simplifiedCircuit = simplifyCircuit(circuit)
-    % Simplify the circuit based on predefined rules
-
-    % First, recursively simplify the components
-    if isfield(circuit, 'components')
-        for i = 1:length(circuit.components)
-            circuit.components{i} = simplifyCircuit(circuit.components{i});
-        end
-    end
-
-    simplifiedCircuit = circuit;
-
-    % Simplify series or parallel configurations
-    if (strcmp(circuit.type, 'series') || strcmp(circuit.type, 'parallel'))
-        % Flatten components of the same type
-        flatComps = flattenComponents(circuit, circuit.type);
-
-        % Remove duplicates selectively
-        uniqueComps = uniqueComponents(flatComps);
-
-        % If only one component remains, return it
-        if isscalar(uniqueComps)
-            simplifiedCircuit = uniqueComps{1};
-        else
-            % Reconstruct the circuit
-            simplifiedCircuit.type = circuit.type;
-            simplifiedCircuit.components = uniqueComps;
-        end
-    end
-end
-
-function flatComps = flattenComponents(circuit, mode)
-    % Recursively flatten components of the same type
-    flatComps = {};
-    for i = 1:length(circuit.components)
-        comp = circuit.components{i};
-        if strcmp(comp.type, mode)
-            % Flatten further
-            flatComps = [flatComps, flattenComponents(comp, mode)];
-        else
-            flatComps{end+1} = comp;
-        end
-    end
-end
-
-function uniqueComps = uniqueComponents(components)
-    % Remove duplicate components based on their canonical forms,
-    % but only for elements of types R, C, L, or W
-
-    elementTypesToReduce = {'R', 'C', 'L', 'W'};
-    uniqueComps = {};
-    seenReprs = {};
-
-    for i = 1:length(components)
-        comp = components{i};
-        repr = getCanonicalForm(comp);
-
-        % Determine if the component is an element of types to reduce
-        if strcmp(comp.type, 'element') && ismember(comp.value, elementTypesToReduce)
-            % Only remove duplicates for specified element types
-            if ~ismember(repr, seenReprs)
-                uniqueComps{end+1} = comp;
-                seenReprs{end+1} = repr;
-            end
-        else
-            % For other elements or circuits, include all
-            uniqueComps{end+1} = comp;
-        end
-    end
-end
-
-function repr = getCanonicalForm(circuit)
-    % Get a canonical string representation of the circuit
-    if strcmp(circuit.type, 'element')
-        repr = circuit.value;
-    else
-        compReprs = cellfun(@getCanonicalForm, circuit.components, 'UniformOutput', false);
-        % Sort the representations to account for commutativity
-        compReprs = sort(compReprs);
-        if strcmp(circuit.type, 'series')
-            operatorstr = 's';
-        elseif strcmp(circuit.type, 'parallel')
-            operatorstr = 'p';
-        end
-        repr = [operatorstr, '(', strjoin(compReprs, ','), ')'];
-    end
-end
-
-function num = getNumElements(circuit)
-    % Get the number of elements in the circuit
-    if strcmp(circuit.type, 'element')
-        num = 1;
-    else
-        num = 0;
-        for i = 1:length(circuit.components)
-            num = num + getNumElements(circuit.components{i});
-        end
-    end
-end
-
-function circuit = parseCircuitString(circuitStr)
-    % Remove spaces
-    circuitStr = strrep(circuitStr, ' ', '');
-    [circuit, ~] = parseCircuit(circuitStr);
-end
-
-function [circuit, idx] = parseCircuit(str, idx)
-    if nargin < 2
-        idx = 1;
-    end
-    if idx > length(str)
-        circuit = [];
-        return;
-    end
-    if str(idx) == 's' || str(idx) == 'p'
-        circuit.type = connectionType(str(idx));
-        idx = idx + 1; % Move past 's' or 'p'
-        assert(str(idx) == '(', 'Expected ( after %s', str(idx-1));
-        idx = idx + 1; % Move past '('
-        components = {};
-        while idx <= length(str) && str(idx) ~= ')'
-            [comp, idx] = parseCircuit(str, idx);
-            components{end+1} = comp;
-            if idx <= length(str) && str(idx) == ','
-                idx = idx + 1; % Move past ','
-            end
-        end
-        assert(str(idx) == ')', 'Expected ) at position %d', idx);
-        idx = idx + 1; % Move past ')'
-        circuit.components = components;
-    else
-        % Parse element
-        elemType = '';
-        while idx <= length(str) && isLetter(str(idx))
-            elemType = [elemType, str(idx)];
-            idx = idx + 1;
-        end
-        circuit.type = 'element';
-        circuit.value = elemType;
-    end
-end
-
-function isLetter = isLetter(c)
-    isLetter = ismember(c, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz');
-end
-
-function connType = connectionType(c)
-    if c == 's'
-        connType = 'series';
-    elseif c == 'p'
-        connType = 'parallel';
-    else
-        error('Unknown connection type: %s', c);
-    end
-end
-
-function elemType = getElementType(circuit)
-    % Get the element type of a circuit component
-    if strcmp(circuit.type, 'element')
-        elemType = circuit.value;
-    else
-        elemType = '';
-    end
-end
+%% helper functions
+% Function to perform the save operation
+% function saveDataFunction(filepath, dataStruct)
+%     save(filepath, '-struct', 'dataStruct', '-v7.3');
+%     disp([char(datetime) ' Finished saving data'])
+% end
