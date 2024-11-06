@@ -5,7 +5,12 @@ function isValid = isValidCircuit(circuit)
 isValid = true;
 if strcmp(circuit.type, 'element')
     % if circuit struct is a element type return true
-    return
+    if ~isempty(circuit.value)
+        return
+    else
+        isValid = false;
+        return
+    end
 end
 if isfield(circuit, 'components')
     comps = circuit.components;

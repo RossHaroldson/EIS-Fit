@@ -56,14 +56,28 @@ for i = 1:length(filelist)
 end
 %% Prepare fitting
 % gather any relavent data before starting fitting
-% prepare guess circuit(s)
-gcirc1='s(R,p(C,R))'; % randles circuit
-gcirc2='s(R,p(s(R,p(R,C)),C,s(p(O,O),p(O,O))))';
-gcirc3='s(R,L,p(s(R,p(R,C)),C,s(p(O,O),p(O,O))))';
-% convert circuits to function handles
-[gcircfun1, cirvar1] = CirStr2FuncHan(gcirc1);
-[gcircfun2, cirvar2] = CirStr2FuncHan(gcirc2);
-[gcircfun3, cirvar3] = CirStr2FuncHan(gcirc3);
+% prepare guess circuit(s) and make sure they are validate them
+FitCirc = struct();
+
+FitCirc(1).String="s(R,p(C,R))"; % randles circuit
+FitCirc(2).String="s(R,p(s(R,p(R,C)),C,s(p(O,O),p(O,O))))";
+FitCirc(3).String="s(R,L,p(s(R,p(R,C)),C,s(p(O,O),p(O,O))))";
+% check if circuits are valid
+for i = 1:length(FitCirc)
+    if isValidCircuitString(FitCirc(i).String)
+        disp([FitCirc(i).String{1} ' is a valid circuit'])
+        FitCirc(i).String = getCanonicalForm(parseCircuitString(FitCirc(i).String));
+    else
+        warning([FitCirc(i).String{1} ' is not a valid circuit. Replacing it with a resistor.'])
+        % use a resistor as a dummy replacement
+        FitCirc(i).String = "R";
+    end
+end
+% convert circuit strings to function handles
+for i = 1: length(FitCircStr)
+    [FitCirc(i).Func, FitCirc(i).Variables] = CirStr2FuncHan(FitCirc(i).String{1});
+end
+
 %% Start fitting
 
 %% Plot fits and errors
