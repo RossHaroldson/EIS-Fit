@@ -74,7 +74,7 @@ for i = 1:length(FitCirc)
     end
 end
 % convert circuit strings to function handles
-for i = 1: length(FitCircStr)
+for i = 1: length(FitCirc)
     [FitCirc(i).Func, FitCirc(i).Variables] = CirStr2FuncHan(FitCirc(i).String{1});
 end
 
