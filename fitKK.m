@@ -28,6 +28,42 @@ function [] = fitKK(freq, Zdata, Zcircuit, elementVals)
     R2cirPh = 1 - sum(phase(ZcirRes).^2)/sum(phase(Zdata-mean(Zdata)).^2);
     R2fitPh = 1 - sum(phase(ZcircFit).^2)/sum(phase(Zdata-mean(Zdata)).^2);
 
+    %{
+    % Brute force KK fit without an equivalent circuit
+    realIntegrals = zeros(length(freq),1);
+    imagIntegrals = zeros(length(freq),1);
+    for n = 1:length(freq)
+        if n <= 2
+            imagIntegrals(n) = 2/pi * trapz(freq(n+1:end), (freq(n+1:end).*Zimag(n+1:end)-freq(n)*Zimag(n))./(freq(n+1:end).^2-freq(n)^2));
+            realIntegrals(n) = -2/pi * freq(n) * trapz(freq(n+1:end), (Zreal(n+1:end)-Zreal(n))./(freq(n+1:end).^2-freq(n)^2));
+        elseif n >= length(freq)-1
+            imagIntegrals(n) = 2/pi * trapz(freq(1:n-1), (freq(1:n-1).*Zimag(1:n-1)-freq(n)*Zimag(n))./(freq(1:n-1).^2-freq(n)^2));
+            realIntegrals(n) = -2/pi * freq(n) * trapz(freq(1:n-1), (Zreal(1:n-1)-Zreal(n))./(freq(1:n-1).^2-freq(n)^2));
+        else
+            imagIntegrals(n) = 2/pi * ( trapz(freq(1:n-1), (freq(1:n-1).*Zimag(1:n-1)-freq(n)*Zimag(n))./(freq(1:n-1).^2-freq(n)^2)) + trapz(freq(n+1:end), freq(n)./freq(n+1:end).*(Zimag(n+1:end)-Zimag(n))./(freq(n+1:end).^2-freq(n)^2)) );
+            realIntegrals(n) = -2/pi * freq(n) * ( trapz(freq(1:n-1), (Zreal(1:n-1)-Zreal(n))./(freq(1:n-1).^2-freq(n)^2)) + trapz(freq(n+1:end), (Zreal(n+1:end)-Zreal(n))./(freq(n+1:end).^2-freq(n)^2)) );
+        end
+    end
+    
+    Rinf = sum(weights.*(Zreal - imagIntegrals))/(sum(weights));
+    ZrealKK = Rinf + imagIntegrals;
+    ZimagKK = realIntegrals;
+    
+    ZmodKK = (ZrealKK.^2+ZimagKK.^2).^(1/2);
+    ZphzKK = 180/pi.*atan(ZimagKK./ZrealKK);
+    ZphzKK(ZphzKK>0) = ZphzKK(ZphzKK>0) - 180;
+    
+    ZrealRes = Zreal-ZrealKK;
+    ZimagRes = Zimag-ZimagKK;
+    ZmodRes = Zmod-ZmodKK;
+    ZphzRes = Zphz-ZphzKK;
+    
+    R2real = 1 - sum(ZrealRes.^2)/sum((Zreal-mean(Zreal)).^2);
+    R2imag = 1 - sum(ZimagRes.^2)/sum((Zimag-mean(Zimag)).^2);
+    R2mod = 1 - sum(ZmodRes.^2)/sum((Zmod-mean(Zmod)).^2);
+    R2phz = 1 - sum(ZphzRes.^2)/sum((Zphz-mean(Zphz)).^2);
+    %}
+
     % Nyquist plot
     figure(1)
     clf,cla
@@ -105,5 +141,8 @@ function [] = fitKK(freq, Zdata, Zcircuit, elementVals)
     ylabel('Normalized Phase Residuals');
     legend('Circuit','Fit');
     title(['Circuit $R_{\mathrm{ph}}^2$ = ',num2str(R2cirPh),'; Fit $R_{\mathrm{ph}}^2$ = ',num2str(R2fitPh)],'Interpreter','latex');
+
+    % Brute force KK fit without equivalent circuit
+
 
 end
