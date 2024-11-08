@@ -7,9 +7,12 @@ function fit = fitZ(Z, freq, ImpFunc, v0, lb, ub)
 % Returns fit coefficients, residuals, goodness of fit (gof), R2, adjusted R2, fit curves,
 % and confidence intervals for each method.
 
+% Convert frequency to angular frequency
+w = 2.*pi.*freq;
+
 % Initialize output structure
 fit.Z = Z;
-fit.freq = freq;
+fit.w = w;
 fit.ImpFunc = ImpFunc;
 
 % Ensure lb and ub are column vectors
@@ -21,22 +24,22 @@ v0 = v0(:);
 try
     % Transform initial guess to unbounded space
     x0 = paramTransform(v0, lb, ub);
-    
+
     % Define the transformed error function
-    errfcn_transformed = @(x) errFunction(transformParams(x, lb, ub), Z, freq, ImpFunc);
-    
+    errfcn_transformed = @(x) errFunction(transformParams(x, lb, ub), Z, w, ImpFunc);
+
     % Optimization options
     options = optimset('Display', 'off', 'MaxFunEvals', 5000, 'MaxIter', 5000);
-    
+
     % Perform the fitting using fminsearch
     [xfit, fval] = fminsearch(errfcn_transformed, x0, options);
-    
+
     % Transform the fitted parameters back to original space
     vfit = transformParams(xfit, lb, ub);
-    
+
     % Store results
     fit.simplex.coeff = vfit;
-    fit.simplex.fitcurve = ImpFunc(vfit, freq);
+    fit.simplex.fitcurve = ImpFunc(vfit, w);
     fit.simplex.residuals = Z - fit.simplex.fitcurve;
     fit.simplex.gof = fval;
     [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
@@ -56,11 +59,11 @@ try
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'levenberg-marquardt');
     
     % Perform the fitting without bounds
-    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Zdata, freq, ImpFunc), v0, [], [], options);
+    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Zdata, w, ImpFunc), v0, [], [], options);
     
     % Store results
     fit.levenbergMarquardt.coeff = vfit;
-    fit.levenbergMarquardt.fitcurve = ImpFunc(vfit, freq);
+    fit.levenbergMarquardt.fitcurve = ImpFunc(vfit, w);
     fit.levenbergMarquardt.residuals = Z - fit.levenbergMarquardt.fitcurve;
     fit.levenbergMarquardt.gof = resnorm;
     [fit.levenbergMarquardt.R2, fit.levenbergMarquardt.R2adjusted] = computeR2(Z, fit.levenbergMarquardt.fitcurve, length(v0));
@@ -81,11 +84,11 @@ try
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     
     % Perform the fitting with bounds
-    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Zdata, freq, ImpFunc), v0, lb, ub, options);
+    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Zdata, w, ImpFunc), v0, lb, ub, options);
     
     % Store results
     fit.trustRegion.coeff = vfit;
-    fit.trustRegion.fitcurve = ImpFunc(vfit, freq);
+    fit.trustRegion.fitcurve = ImpFunc(vfit, w);
     fit.trustRegion.residuals = Z - fit.trustRegion.fitcurve;
     fit.trustRegion.gof = resnorm;
     [fit.trustRegion.R2, fit.trustRegion.R2adjusted] = computeR2(Z, fit.trustRegion.fitcurve, length(v0));

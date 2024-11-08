@@ -33,9 +33,9 @@ Ger = @(w,Yo,k) (k+1j.*w).^(-0.5)./Yo;
 % Fractal gerischer impedance
 GerFrac = @(w,Yo,k,al) (k+1j.*w).^(-al)./Yo;
 % Finite gerischer short impedance maybe transmittive boundary 
-FinGerSh= @(w,Yo,k,d,D) tanh(d.*sqrt((k1+1j.*w)./D))./sqrt((k1+1j.*w).*D); 
+FinGerSh= @(w,Yo,k,d,D) tanh(d.*sqrt((k+1j.*w)./D))./sqrt((k+1j.*w).*D); 
 % Finite gerischer open impedance maybe reflective boundary (not in literature)
-FinGerOp= @(w,Yo,k,d,D) coth(d.*sqrt((k1+1j.*w)./D))./sqrt((k1+1j.*w).*D); 
+FinGerOp= @(w,Yo,k,d,D) coth(d.*sqrt((k+1j.*w)./D))./sqrt((k+1j.*w).*D); 
 
 % Initalize parameters
 freq = logspace(6,-4,100);
@@ -47,12 +47,12 @@ thickness = 5e-7; % in 500nm meters
 % import all .dta files in that folder as tables into a struct.
 importfolder=uigetdir(fileparts(matlab.desktop.editor.getActiveFilename),'Choose which folder of data to import');
 filelist = dir([importfolder '\*.dta']);
-measurements = struct();
+Measurements = struct();
 for i = 1:length(filelist)
     % import each file to the measurements struct
-    measurements(i).table = importGamryDTAfile(fullfile(filelist(i).folder,filelist(i).name));
-    measurements(i).name = filelist(i).name(1:end-4);
-    measurements(i).folder = filelist(i).folder;
+    Measurements(i).data = importGamryDTAfile(fullfile(filelist(i).folder,filelist(i).name));
+    Measurements(i).name = filelist(i).name(1:end-4);
+    Measurements(i).folder = filelist(i).folder;
 end
 %% Prepare fitting
 % gather any relavent data before starting fitting
@@ -79,5 +79,14 @@ for i = 1: length(FitCirc)
 end
 
 %% Start fitting
-
+for i = 1:length(Measurements)
+    for k = 1:length(FitCirc)
+        [v0,lb,ub] = getInitialGuess(FitCirc(k).Variables,1,1);
+        Zdata = Measurements(i).data.Zreal+1j.*Measurements(i).data.Zimag;
+        Measurements(i).CircuitGuess(k).Func = FitCirc(k).Func;
+        Measurements(i).CircuitGuess(k).Variables = FitCirc(k).Variables;
+        Measurements(i).CircuitGuess(k).String = FitCirc(k).String;
+        Measurements(i).CircuitGuess(k).fit = fitZ(Zdata, Measurements(i).data.Freq,FitCirc(k).Func,v0,lb,ub);
+    end
+end
 %% Plot fits and errors

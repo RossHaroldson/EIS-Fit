@@ -37,7 +37,7 @@ expr_str = circuit_str;
 [expr_str, var_list, L_count] = replace_elements(expr_str, 'L',...
     @(n) ['L' num2str(n)], @(var) ['1j.*w.*' var], var_list, L_count);
 [expr_str, var_list, W_count] = replace_elements(expr_str, 'W',...
-    @(n) ['Yo_W' num2str(n)], @(var) ['1./' var './sqrt(1j.*w)'], var_list, W_count);
+    @(n) ['W_Yo' num2str(n)], @(var) ['1./' var './sqrt(1j.*w)'], var_list, W_count);
 [expr_str, var_list, T_count] = replace_elements(expr_str, 'T',...
     @(n) ["T_Yo" + num2str(n) "T_B" + num2str(n)],...
     @(var) ['coth(' var{2} '.*sqrt(1j.*w))./' var{1} './sqrt(1j.*w)'], var_list, T_count);
@@ -57,13 +57,12 @@ expr_str = process_commas(expr_str);
 
 % Create the function handle string
 % Function arguments
-var_list{end+1} = 'w';
-var_list_unique = unique(var_list, 'stable'); % Remove duplicates
-var_names = var_list_unique;
-func_args = join(var_list_unique, ',');
+%var_list{end+1} = 'w'; % probably not needed or wanted anymore
+var_names = unique(var_list, 'stable'); % Remove duplicates and save as var_names output
+func_args = join(var_names, ','); % make function arguments string by adding commas between each variable name
 
-% Full function string
-func_str = join(['@(', func_args, ') ', expr_str],'');
+% Full initial function string
+func_str = join(['@(', func_args, ',w) ', expr_str],'');
 
 % Display the function string for debugging
 disp("Function string: " + func_str);
@@ -71,8 +70,8 @@ disp("Function string: " + func_str);
 % Now replace substrings to match the format of element_vars passed
 % into Imp
 func_str = replace(func_str,func_args,'element_vals');
-for v = 1:length(var_list_unique)
-    func_str = replace(func_str, var_list_unique{v}, append('element_vals{',num2str(v),'}'));
+for v = 1:length(var_names)
+    func_str = replace(func_str, var_names{v}, append('element_vals{',num2str(v),'}'));
 end
 
 % Now, create the function handle
