@@ -54,6 +54,7 @@ for i = 1:length(filelist)
     Measurements(i).name = filelist(i).name(1:end-4);
     Measurements(i).folder = filelist(i).folder;
 end
+
 %% Prepare fitting
 % gather any relavent data before starting fitting
 % prepare guess circuit(s) and make sure they are validate them
@@ -79,10 +80,14 @@ for i = 1: length(FitCirc)
 end
 
 %% Start fitting
+KKfits = struct();
 for i = 1:length(Measurements)
+    Zdata = Measurements(i).data.Zreal+1j.*Measurements(i).data.Zimag;
+    % generate Kramers-Kronig fit
+    [KKfits(i).Z, KKfits(i).errFunc, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub, KKfits(i).Rinf] = KKfunc(Measurements(i).data);
+    Measurements(i).KKfit = fitZ( Zdata, Measurements(i).data.Freq, KKfits(i).Z, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub );
     for k = 1:length(FitCirc)
         [v0,lb,ub] = getInitialGuess(FitCirc(k).Variables,1,1);
-        Zdata = Measurements(i).data.Zreal+1j.*Measurements(i).data.Zimag;
         Measurements(i).CircuitGuess(k).Func = FitCirc(k).Func;
         Measurements(i).CircuitGuess(k).Variables = FitCirc(k).Variables;
         Measurements(i).CircuitGuess(k).String = FitCirc(k).String;
@@ -90,3 +95,8 @@ for i = 1:length(Measurements)
     end
 end
 %% Plot fits and errors
+for i = 1:length(Measurements)
+    fit = Measurements(i).KKfit.simplex;
+    Zdata = Measurements(i).data.Zreal+1j.*Measurements(i).data.Zimag;
+    plotFit(Measurements(i).data.Freq, Zdata, fit.fitcurve, fit.gof);
+end
