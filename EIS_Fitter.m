@@ -84,7 +84,7 @@ KKfits = struct();
 for i = 1:length(Measurements)
     Zdata = Measurements(i).data.Zreal+1j.*Measurements(i).data.Zimag;
     % generate Kramers-Kronig fit
-    [KKfits(i).Z, KKfits(i).errFunc, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub, KKfits(i).Rinf] = KKfunc(Measurements(i).data);
+    [KKfits(i).Z, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub, KKfits(i).Rinf] = KKfunc(Measurements(i).data);
     Measurements(i).KKfit = fitZ( Zdata, Measurements(i).data.Freq, KKfits(i).Z, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub );
     for k = 1:length(FitCirc)
         [v0,lb,ub] = getInitialGuess(FitCirc(k).Variables,1,1);
@@ -95,8 +95,5 @@ for i = 1:length(Measurements)
     end
 end
 %% Plot fits and errors
-for i = 1:length(Measurements)
-    fit = Measurements(i).KKfit.simplex;
-    Zdata = Measurements(i).data.Zreal+1j.*Measurements(i).data.Zimag;
-    plotFit(Measurements(i).data.Freq, Zdata, fit.fitcurve, fit.gof);
-end
+Zdata = Measurements(1).data.Zreal+1j.*Measurements(1).data.Zimag;
+plotFit(Measurements(1).data.Freq, Zdata, Measurements(1).KKfit);

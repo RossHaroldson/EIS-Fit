@@ -1,4 +1,4 @@
-function [Zcircuit, errFunc, x0, lb, ub, Rinf] = KKfunc(data) 
+function [Zcircuit, x0, lb, ub, Rinf] = KKfunc(data) 
 % Generates an impedance fit based on Kramers-Kronig relations applied to
 % Boukamp's equivalent circuit (1995)
 
@@ -10,17 +10,18 @@ function [Zcircuit, errFunc, x0, lb, ub, Rinf] = KKfunc(data)
 
     % Kramers-Kronig relations for equivalent circuit (Boukamp, 1995)
     numVoigt = N;
-    imagSum = @(x) sum( x(1:numVoigt)./(1+(w*x(numVoigt+1:end)).^2), 2);
+    imagSum = @(x,w) sum( x(1:numVoigt)./(1+(w'*x(numVoigt+1:end)).^2), 2);
     weights = data.Zmod.^(-2);
-    Rinf = @(x) sum(weights.*(real(Zdata)-imagSum(x)))/sum(weights);
-    ZcirRe = @(x) Rinf(x) + imagSum(x);
-    ZcirIm = @(x) -sum( w*x(1:numVoigt).*x(numVoigt+1:end)./(1+(w*x(numVoigt+1:end)).^2), 2);
-    Zcircuit = @(x) ZcirRe(x) + 1i*ZcirIm(x);
-
-    errFunc = @(x) abs((Zdata-Zcircuit(x))./Zcircuit(x)).^2;
+    Rinf = @(x,w) sum(weights.*(real(Zdata)-imagSum(x,w)))/sum(weights);
+    ZcirRe = @(x,w) Rinf(x,w) + imagSum(x,w);
+    ZcirIm = @(x,w) -sum( w'*x(1:numVoigt).*x(numVoigt+1:end)./(1+(w'*x(numVoigt+1:end)).^2), 2);
+    Zcircuit = @(x,w) ZcirRe(x,w) + 1i*ZcirIm(x,w);
 
     % Initial guesses
+    % Uniform guesses
     R0 = 1e5 * ones(numVoigt,1);
+    % Log-space uniformly distributed random guesses
+    % R0 = 10.^(10*rand(numVoigt,1));
     lbR = 1 * ones(numVoigt,1);
     ubR = 1e10 * ones(numVoigt,1);
 
