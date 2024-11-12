@@ -1,6 +1,6 @@
-function [Zcircuit, x0, lb, ub, Rinf] = KKfunc(data) 
+function [Zcircuit, x0, lb, ub] = KKfunc(data) 
 % Generates an impedance fit based on Kramers-Kronig relations applied to
-% Boukamp's equivalent circuit (1995)
+% Boukamp's equivalent circuit (1995) plus an inductor in series
 
     % Initialize data
     freq = data.Freq;
@@ -10,11 +10,14 @@ function [Zcircuit, x0, lb, ub, Rinf] = KKfunc(data)
 
     % Kramers-Kronig relations for equivalent circuit (Boukamp, 1995)
     numVoigt = N;
-    imagSum = @(x,w) sum( x(1:numVoigt)./(1+(w'*x(numVoigt+1:end)).^2), 2);
     weights = data.Zmod.^(-2);
+    imagSum = @(x,w) sum( x(1:numVoigt)./(1+(w'*x(numVoigt+1:end)).^2), 2);
     Rinf = @(x,w) sum(weights.*(real(Zdata)-imagSum(x,w)))/sum(weights);
     ZcirRe = @(x,w) Rinf(x,w) + imagSum(x,w);
-    ZcirIm = @(x,w) -sum( w'*x(1:numVoigt).*x(numVoigt+1:end)./(1+(w'*x(numVoigt+1:end)).^2), 2);
+    realSum = @(x,w) -sum( w'*x(1:numVoigt).*x(numVoigt+1:end)./(1+(w'*x(numVoigt+1:end)).^2), 2);
+    % Inductive reactance, determined similarly as Rinf
+    XLinf = @(x,w) sum(weights.*(imag(Zdata)-realSum(x,w)))/sum(weights);
+    ZcirIm = @(x,w) XLinf(x,w) + realSum(x,w);
     Zcircuit = @(x,w) ZcirRe(x,w) + 1i*ZcirIm(x,w);
 
     % Initial guesses
