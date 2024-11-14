@@ -71,7 +71,7 @@ disp("Function string: " + func_str);
 % into Imp
 func_str = replace(func_str,func_args,'element_vals');
 for v = 1:length(var_names)
-    func_str = replace(func_str, var_names{v}, append('element_vals{',num2str(v),'}'));
+    func_str = replace(func_str, var_names{v}, append('element_vals(',num2str(v),')'));
 end
 
 % Now, create the function handle

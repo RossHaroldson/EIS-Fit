@@ -94,6 +94,8 @@ for i = 1:length(Measurements)
         Measurements(i).CircuitGuess(k).fit = fitZ(Zdata, Measurements(i).data.Freq,FitCirc(k).Func,v0,lb,ub);
     end
 end
+disp('Finished Fitting')
 %% Plot fits and errors
 Zdata = Measurements(1).data.Zreal+1j.*Measurements(1).data.Zimag;
 plotFit(Measurements(1).data.Freq, Zdata, Measurements(1).KKfit);
+plotFit(Measurements(1).data.Freq, Zdata, Measurements(1).CircuitGuess(1).fit);

@@ -11,7 +11,7 @@ for l = 1:length(VariableNames)
     % upper and lower bounds depeneding on what type of variable it
     % is. probably make a function to do this.
     if contains(VariableNames{l},'R')
-        v0(l) = 1; % guess
+        v0(l) = 100; % guess ohms
         lb(l) = 1; % lower bound
         ub(l) = 1e10; % upper bound
     elseif contains(VariableNames{l},'C')
@@ -19,19 +19,19 @@ for l = 1:length(VariableNames)
         lb(l) = 1e-13; % lower bound
         ub(l) = 1e-5; % upper bound
     elseif contains(VariableNames{l},'L')
-        v0(l) = 1e-11; % guess farads
+        v0(l) = 1e-11; % guess Henrys
         lb(l) = 1e-12; % lower bound
         ub(l) = 1e-2; % upper bound
     elseif contains(VariableNames{l},'Yo')
-        v0(l) = 1e-9; % guess farads
+        v0(l) = 1e-9; % guess Yo
         lb(l) = 1e-13; % lower bound
         ub(l) = 1e-5; % upper bound
     elseif contains(VariableNames{l},'B')
-        v0(l) = 1; % guess farads
+        v0(l) = 1; % guess B
         lb(l) = 1e-6; % lower bound
         ub(l) = 1e4; % upper bound
     elseif contains(VariableNames{l},'k')
-        v0(l) = 1; % guess farads
+        v0(l) = 1; % guess time constant
         lb(l) = 1e-3; % lower bound
         ub(l) = 1e6; % upper bound
     else

@@ -13,6 +13,7 @@ w = 2.*pi.*freq;
 % Initialize output structure
 fit.Z = Z;
 fit.w = w;
+fit.freq=freq;
 fit.ImpFunc = ImpFunc;
 
 % Ensure lb and ub are column vectors
@@ -40,7 +41,8 @@ try
     % Store results
     fit.simplex.coeff = vfit;
     fit.simplex.fitcurve = ImpFunc(vfit, w);
-    fit.simplex.residuals = Z - fit.simplex.fitcurve;
+    % weighted residuals for plotting
+    fit.simplex.residuals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
     fit.simplex.gof = fval;
     [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
     % Confidence intervals estimation is complex here and not provided
@@ -52,19 +54,23 @@ end
 
 %% Method 2: Levenberg-Marquardt Method (lsqnonlin without bounds)
 try
-    % Concatenate real and imaginary parts of Z into a real vector
-    Zdata = [real(Z); imag(Z)];
+    try
+        v0=fit.simplex.coeff;
+    catch
+        % stay with initial guesses
+    end
     
     % Optimization options
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'levenberg-marquardt');
     
     % Perform the fitting without bounds
-    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Zdata, w, ImpFunc), v0, [], [], options);
+    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
     
     % Store results
     fit.levenbergMarquardt.coeff = vfit;
     fit.levenbergMarquardt.fitcurve = ImpFunc(vfit, w);
-    fit.levenbergMarquardt.residuals = Z - fit.levenbergMarquardt.fitcurve;
+     % weighted residuals for plotting
+    fit.levenbergMarquardt.residuals = (Z - fit.levenbergMarquardt.fitcurve)./abs(fit.levenbergMarquardt.fitcurve);
     fit.levenbergMarquardt.gof = resnorm;
     [fit.levenbergMarquardt.R2, fit.levenbergMarquardt.R2adjusted] = computeR2(Z, fit.levenbergMarquardt.fitcurve, length(v0));
     % Confidence intervals using nlparci
@@ -77,19 +83,22 @@ end
 
 %% Method 3: Trust-Region-Reflective Method (lsqnonlin with bounds)
 try
-    % Concatenate real and imaginary parts of Z into a real vector
-    Zdata = [real(Z); imag(Z)];
-    
+    try
+        v0=fit.simplex.coeff;
+    catch
+        % stay with initial guesses
+    end
     % Optimization options
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     
     % Perform the fitting with bounds
-    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Zdata, w, ImpFunc), v0, lb, ub, options);
+    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
     
     % Store results
     fit.trustRegion.coeff = vfit;
     fit.trustRegion.fitcurve = ImpFunc(vfit, w);
-    fit.trustRegion.residuals = Z - fit.trustRegion.fitcurve;
+     % weighted residuals for plotting
+    fit.trustRegion.residuals = (Z - fit.trustRegion.fitcurve)./abs(fit.trustRegion.fitcurve);
     fit.trustRegion.gof = resnorm;
     [fit.trustRegion.R2, fit.trustRegion.R2adjusted] = computeR2(Z, fit.trustRegion.fitcurve, length(v0));
     % Confidence intervals using nlparci
@@ -103,18 +112,18 @@ end
 end
 
 % Error function with original weighting for fminsearch
-function err = errFunction(v, Zmeas, freq, ImpFunc)
-    Zmodel = ImpFunc(v, freq);
-    errVec = ((real(Zmeas) - real(Zmodel)).^2 + (imag(Zmeas) - imag(Zmodel)).^2) ./ abs(Zmeas).^2;
+function err = errFunction(v, Zmeas, w, ImpFunc)
+    Zfit = ImpFunc(v, w);
+    errVec = ((real(Zmeas) - real(Zfit)).^2 + (imag(Zmeas) - imag(Zfit)).^2) ./ abs(Zmeas).^2;
     err = sum(errVec);
 end
 
 % Weighted function for lsqnonlin
-function errVec = weightFunction(v, Zdata, freq, ImpFunc)
-    Zmodel = ImpFunc(v, freq);
-    ZmodelData = [real(Zmodel); imag(Zmodel)];
-    weights = 1 ./ abs([real(Zmodel); imag(Zmodel)]);
-    errVec = weights .* (Zdata - ZmodelData);
+function errVec = weightFunction(v, Zmeas, w, ImpFunc)
+    Zfit = ImpFunc(v, w);
+    %ZmodelData = [real(Zmodel); imag(Zmodel)];
+    %weights = 1 ./ abs(Z);
+    errVec = ((real(Zmeas) - real(Zfit)).^2 + (imag(Zmeas) - imag(Zfit)).^2) ./ abs(Zmeas).^2;
 end
 
 % Compute R-squared and adjusted R-squared
