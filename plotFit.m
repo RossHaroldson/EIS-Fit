@@ -31,11 +31,11 @@ function [] = plotFit(freq, Zdata, fit)
 
     %figure();
     subplot(2,2,3)
-    semilogx(freq, phase(Zdata), '.');
+    semilogx(freq, 180/pi*phase(Zdata), '.');
     hold on
-    semilogx(freq, phase(fit.simplex.fitcurve), '-');
-    semilogx(freq, phase(fit.levenbergMarquardt.fitcurve), '--');
-    semilogx(freq, phase(fit.trustRegion.fitcurve), '-.k');
+    semilogx(freq, 180/pi*phase(fit.simplex.fitcurve), '-');
+    semilogx(freq, 180/pi*phase(fit.levenbergMarquardt.fitcurve), '--');
+    semilogx(freq, 180/pi*phase(fit.trustRegion.fitcurve), '-.k');
     hold off
     grid on
     xlim([freq(end) freq(1)]);
