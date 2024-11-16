@@ -10,12 +10,12 @@ function [] = plotFit(freq, Zdata, fit)
     plot(real(fit.trustRegion.fitcurve), -imag(fit.trustRegion.fitcurve), '-.k');
     hold off
     grid on
+    %xlim([real(Zdata(1)), real(Zdata(end))]);
     xlabel('Real(Z)');
     ylabel('-Imag(Z)');
     legend('Data','Simplex','Levenberg-Marquardt','Trust-Region-Reflexive','Location','northeast');
 
     % Bode plots
-    %figure();
     subplot(2,2,2)
     loglog(freq, abs(Zdata), '.');
     hold on
@@ -29,7 +29,6 @@ function [] = plotFit(freq, Zdata, fit)
     ylabel('Impedance Magnitude |Z| (ohms)');
     legend('Data','Simplex','Levenberg-Marquardt','Trust-Region-Reflexive','Location','northeast');
 
-    %figure();
     subplot(2,2,3)
     semilogx(freq, 180/pi*phase(Zdata), '.');
     hold on
@@ -44,7 +43,6 @@ function [] = plotFit(freq, Zdata, fit)
     legend('Data','Simplex','Levenberg-Marquardt','Trust-Region-Reflexive','Location','north');
     
     % Error plot
-    %figure();
     subplot(2,2,4)
     loglog(freq, abs(fit.simplex.residuals), '-');
     hold on
