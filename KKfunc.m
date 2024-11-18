@@ -30,10 +30,10 @@ function [Zfunc, x0, lb, ub] = KKfunc(data)
     % Uniform guesses
     %R0 = 1e4 * ones(numVoigt,1);
     % Log-space uniformly distributed random guesses
-    %x0 = 10.^(8*rand(M,1));
+    x0 = 10.^(8.*(2.*rand(M,1)-1));
     %x0(1)= 10;
     % R guesses
-    x0 = 1e6 * ones(M,1);
+    % x0 = 1e6 * ones(M,1);
     x0(1) = 10;
     lb = 1 * ones(M,1);
     ub = 1e10 * ones(M,1);
@@ -45,7 +45,9 @@ function [Zfunc, x0, lb, ub] = KKfunc(data)
     x0(end) = 1e-6;
     lb(end) = 1e-12;
     ub(end) = 1e-2;
-
+    
+    lb = -1e10.* ones(M,1);
+    ub = 1e10.* ones(M,1);
     %tau0 = 1./logspace(max(log10(freq)),min(log10(freq)),numVoigt)';
     %lbTau = 1e-13 * ones(numVoigt,1);
     %ubTau = 1e6 * ones(numVoigt,1);

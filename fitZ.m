@@ -9,7 +9,9 @@ function fit = fitZ(Z, freq, ImpFunc, v0, lb, ub)
 
 % Convert frequency to angular frequency
 w = 2.*pi.*freq;
-
+MaxIter = 2000;
+MaxFunEval = 500*length(v0);
+Tol = 1e-9;
 % Initialize output structure
 fit.Z = Z;
 fit.w = w;
@@ -30,18 +32,22 @@ try
     errfcn_transformed = @(x) errFunction(transformParams(x, lb, ub), Z, w, ImpFunc);
 
     % Optimization options
-    options = optimset('Display', 'off', 'MaxFunEvals', 5000, 'MaxIter', 5000);
+    options = optimset('Display', 'off', 'MaxFunEvals', 100000, 'MaxIter', 10000);
 
     % Perform the fitting using fminsearch
-    [xfit, fval] = fminsearch(errfcn_transformed, x0, options);
+    [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
 
     % Transform the fitted parameters back to original space
     vfit = transformParams(xfit, lb, ub);
 
     % Store results
     fit.simplex.coeff = vfit;
+    fit.simplex.exitflag = exitflag;
+    fit.simplex.output = output;
     fit.simplex.fitcurve = ImpFunc(vfit, w);
     % weighted residuals for plotting
+    % fit.simplex.weightedresiduals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
+    % residuals of used by the method
     fit.simplex.residuals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
     fit.simplex.gof = fval;
     [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
@@ -61,16 +67,21 @@ try
     end
     
     % Optimization options
-    options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'levenberg-marquardt');
+    options = optimoptions('lsqnonlin', 'FunctionTolerance', Tol, 'StepTolerance', Tol, ...
+        'MaxIterations', MaxIter,'MaxFunctionEvaluations', MaxFunEval,'Display', 'off', 'Algorithm', 'levenberg-marquardt');
     
     % Perform the fitting without bounds
-    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
+    [vfit, resnorm, residuals, exitflag, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
     
     % Store results
     fit.levenbergMarquardt.coeff = vfit;
+    fit.levenbergMarquardt.output = output;
+    fit.levenbergMarquardt.exitflag=exitflag;
     fit.levenbergMarquardt.fitcurve = ImpFunc(vfit, w);
      % weighted residuals for plotting
-    fit.levenbergMarquardt.residuals = (Z - fit.levenbergMarquardt.fitcurve)./abs(fit.levenbergMarquardt.fitcurve);
+    %fit.levenbergMarquardt.weightedresiduals = (Z - fit.levenbergMarquardt.fitcurve)./abs(fit.levenbergMarquardt.fitcurve);
+    % residuals of used by the method
+    fit.levenbergMarquardt.residuals = residuals;
     fit.levenbergMarquardt.gof = resnorm;
     [fit.levenbergMarquardt.R2, fit.levenbergMarquardt.R2adjusted] = computeR2(Z, fit.levenbergMarquardt.fitcurve, length(v0));
     % Confidence intervals using nlparci
@@ -89,16 +100,21 @@ try
         % stay with initial guesses
     end
     % Optimization options
-    options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
+    options = optimoptions('lsqnonlin', 'FunctionTolerance', Tol, 'StepTolerance', Tol, ...
+        'MaxIterations', MaxIter,'MaxFunctionEvaluations', MaxFunEval,'Display', 'off', 'Algorithm', 'trust-region-reflective');
     
     % Perform the fitting with bounds
-    [vfit, resnorm, residuals, ~, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
+    [vfit, resnorm, residuals, exitflag, output, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
     
     % Store results
     fit.trustRegion.coeff = vfit;
+    fit.trustRegion.output = output;
+    fit.trustRegion.exitflag=exitflag;
     fit.trustRegion.fitcurve = ImpFunc(vfit, w);
      % weighted residuals for plotting
     fit.trustRegion.residuals = (Z - fit.trustRegion.fitcurve)./abs(fit.trustRegion.fitcurve);
+    % residuals of used by the method
+    fit.trustRegion.residuals = residuals;
     fit.trustRegion.gof = resnorm;
     [fit.trustRegion.R2, fit.trustRegion.R2adjusted] = computeR2(Z, fit.trustRegion.fitcurve, length(v0));
     % Confidence intervals using nlparci
@@ -128,8 +144,8 @@ end
 
 % Compute R-squared and adjusted R-squared
 function [R2, R2adjusted] = computeR2(Z, Zfit, p)
-    residuals = Z - Zfit;
-    SSres = sum(abs(residuals).^2);
+    %residuals = Z - Zfit;
+    SSres = sum(abs(Z - Zfit).^2);
     SStot = sum(abs(Z - mean(Z)).^2);
     R2 = 1 - SSres / SStot;
     n = length(Z);

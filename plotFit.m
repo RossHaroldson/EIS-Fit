@@ -30,11 +30,11 @@ function [] = plotFit(freq, Zdata, fit)
     legend('Data','Simplex','Levenberg-Marquardt','Trust-Region-Reflexive','Location','northeast');
 
     subplot(2,2,3)
-    semilogx(freq, 180/pi*phase(Zdata), '.');
+    semilogx(freq, 180/pi*angle(Zdata), '.');
     hold on
-    semilogx(freq, 180/pi*phase(fit.simplex.fitcurve), '-');
-    semilogx(freq, 180/pi*phase(fit.levenbergMarquardt.fitcurve), '--');
-    semilogx(freq, 180/pi*phase(fit.trustRegion.fitcurve), '-.k');
+    semilogx(freq, 180/pi*angle(fit.simplex.fitcurve), '-');
+    semilogx(freq, 180/pi*angle(fit.levenbergMarquardt.fitcurve), '--');
+    semilogx(freq, 180/pi*angle(fit.trustRegion.fitcurve), '-.k');
     hold off
     grid on
     xlim([freq(end) freq(1)]);

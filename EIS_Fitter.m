@@ -85,6 +85,7 @@ for i = 1:length(Measurements)
     Zdata = Measurements(i).data.Zreal+1j.*Measurements(i).data.Zimag;
     % generate Kramers-Kronig fit
     [KKfits(i).Z, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub] = KKfunc(Measurements(i).data);
+    %Measurements(i).KKfit = fitZ( Zdata, Measurements(i).data.Freq, KKfits(i).Z, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub );
     Measurements(i).KKfit = fitZ( Zdata, Measurements(i).data.Freq, KKfits(i).Z, KKfits(i).x0, KKfits(i).lb, KKfits(i).ub );
     for k = 1:length(FitCirc)
         [v0,lb,ub] = getInitialGuess(FitCirc(k).Variables,1,1);
@@ -96,6 +97,21 @@ for i = 1:length(Measurements)
 end
 disp('Finished Fitting')
 %% Plot fits and errors
-Zdata = Measurements(1).data.Zreal+1j.*Measurements(1).data.Zimag;
-plotFit(Measurements(1).data.Freq, Zdata, Measurements(1).KKfit);
-plotFit(Measurements(1).data.Freq, Zdata, Measurements(1).CircuitGuess(1).fit);
+m=2;
+Zdata = Measurements(m).data.Zreal+1j.*Measurements(m).data.Zimag;
+plotFit(Measurements(m).data.Freq, Zdata, Measurements(m).KKfit);
+plotFit(Measurements(m).data.Freq, Zdata, Measurements(m).CircuitGuess(2).fit);
+
+%% 
+for i = 1:length(Measurements)
+   simplexgof(i)=Measurements(i).KKfit.simplex.gof;
+   trustRegiongof(i)=Measurements(i).KKfit.trustRegion.gof;
+   levenbergMarquardtgof(i)=Measurements(i).KKfit.levenbergMarquardt.gof;
+end
+figure;hold on;
+semilogy(simplexgof)
+semilogy(trustRegiongof)
+semilogy(levenbergMarquardtgof)
+grid on
+set(gca,'yscale','log')
+hold off
