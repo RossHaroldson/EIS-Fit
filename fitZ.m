@@ -111,8 +111,8 @@ try
     fit.trustRegion.output = output;
     fit.trustRegion.exitflag=exitflag;
     fit.trustRegion.fitcurve = ImpFunc(vfit, w);
-     % weighted residuals for plotting
-    fit.trustRegion.residuals = (Z - fit.trustRegion.fitcurve)./abs(fit.trustRegion.fitcurve);
+    % weighted residuals for plotting
+    % fit.trustRegion.residuals = (Z - fit.trustRegion.fitcurve)./abs(fit.trustRegion.fitcurve);
     % residuals of used by the method
     fit.trustRegion.residuals = residuals;
     fit.trustRegion.gof = resnorm;
@@ -165,4 +165,38 @@ function x = paramTransform(v, lb, ub)
     v = min(max(v, lb + epsilon), ub - epsilon);
     % Transformation using sigmoid function
     x = -log((ub - lb) ./ (v - lb) - 1);
+end
+
+function fit = simplexfit(fit,Z, w, ImpFunc, v0, lb, ub)
+try
+    % Transform initial guess to unbounded space
+    x0 = paramTransform(v0, lb, ub);
+
+    % Define the transformed error function
+    errfcn_transformed = @(x) errFunction(transformParams(x, lb, ub), Z, w, ImpFunc);
+
+    % Optimization options
+    options = optimset('Display', 'off', 'MaxFunEvals', 100000, 'MaxIter', 10000);
+
+    % Perform the fitting using fminsearch
+    [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
+
+    % Transform the fitted parameters back to original space
+    vfit = transformParams(xfit, lb, ub);
+
+    % Store results
+    fit.simplex.coeff = vfit;
+    fit.simplex.exitflag = exitflag;
+    fit.simplex.output = output;
+    fit.simplex.fitcurve = ImpFunc(vfit, w);
+    % residuals of used by the method
+    fit.simplex.residuals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
+    fit.simplex.gof = fval;
+    [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
+    % Confidence intervals estimation is complex here and not provided
+    fit.simplex.coeffCI = NaN(length(v0), 2);
+catch ME
+    warning(ME.identifier, 'Simplex method failed: %s', ME.message);
+    fit.simplex = [];
+end
 end
