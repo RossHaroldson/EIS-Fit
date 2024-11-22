@@ -9,9 +9,9 @@ function fit = fitZ(Z, freq, ImpFunc, v0, lb, ub)
 
 % Convert frequency to angular frequency
 w = 2.*pi.*freq;
-MaxIter = 2000;
-MaxFunEval = 500*length(v0);
-Tol = 1e-9;
+MaxIter = 300;
+MaxFunEval = 50*length(v0);
+Tol = 1e-12;
 % Initialize output structure
 fit.Z = Z;
 fit.w = w;
@@ -32,7 +32,7 @@ try
     errfcn_transformed = @(x) errFunction(transformParams(x, lb, ub), Z, w, ImpFunc);
 
     % Optimization options
-    options = optimset('Display', 'off', 'MaxFunEvals', 100000, 'MaxIter', 10000);
+    options = optimset('Display', 'off', 'MaxFunEvals', 20*MaxFunEval, 'MaxIter', 20*MaxIter);
 
     % Perform the fitting using fminsearch
     [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
@@ -43,6 +43,7 @@ try
     % Store results
     fit.simplex.coeff = vfit;
     fit.simplex.exitflag = exitflag;
+    disp(['Simplex exit flag: ' num2str(exitflag)])
     fit.simplex.output = output;
     fit.simplex.fitcurve = ImpFunc(vfit, w);
     % weighted residuals for plotting
@@ -77,11 +78,12 @@ try
     fit.levenbergMarquardt.coeff = vfit;
     fit.levenbergMarquardt.output = output;
     fit.levenbergMarquardt.exitflag=exitflag;
+    disp(['Levenberg-Marquardt exit flag: ' num2str(exitflag)])
     fit.levenbergMarquardt.fitcurve = ImpFunc(vfit, w);
      % weighted residuals for plotting
-    %fit.levenbergMarquardt.weightedresiduals = (Z - fit.levenbergMarquardt.fitcurve)./abs(fit.levenbergMarquardt.fitcurve);
+    fit.levenbergMarquardt.residuals = (Z - fit.levenbergMarquardt.fitcurve)./abs(fit.levenbergMarquardt.fitcurve);
     % residuals of used by the method
-    fit.levenbergMarquardt.residuals = residuals;
+    % fit.levenbergMarquardt.residuals = residuals;
     fit.levenbergMarquardt.gof = resnorm;
     [fit.levenbergMarquardt.R2, fit.levenbergMarquardt.R2adjusted] = computeR2(Z, fit.levenbergMarquardt.fitcurve, length(v0));
     % Confidence intervals using nlparci
@@ -110,11 +112,12 @@ try
     fit.trustRegion.coeff = vfit;
     fit.trustRegion.output = output;
     fit.trustRegion.exitflag=exitflag;
+    disp(['Trust Region exit flag: ' num2str(exitflag)])
     fit.trustRegion.fitcurve = ImpFunc(vfit, w);
     % weighted residuals for plotting
-    % fit.trustRegion.residuals = (Z - fit.trustRegion.fitcurve)./abs(fit.trustRegion.fitcurve);
+    fit.trustRegion.residuals = (Z - fit.trustRegion.fitcurve)./abs(fit.trustRegion.fitcurve);
     % residuals of used by the method
-    fit.trustRegion.residuals = residuals;
+    % fit.trustRegion.residuals = residuals;
     fit.trustRegion.gof = resnorm;
     [fit.trustRegion.R2, fit.trustRegion.R2adjusted] = computeR2(Z, fit.trustRegion.fitcurve, length(v0));
     % Confidence intervals using nlparci
@@ -165,38 +168,4 @@ function x = paramTransform(v, lb, ub)
     v = min(max(v, lb + epsilon), ub - epsilon);
     % Transformation using sigmoid function
     x = -log((ub - lb) ./ (v - lb) - 1);
-end
-
-function fit = simplexfit(fit,Z, w, ImpFunc, v0, lb, ub)
-try
-    % Transform initial guess to unbounded space
-    x0 = paramTransform(v0, lb, ub);
-
-    % Define the transformed error function
-    errfcn_transformed = @(x) errFunction(transformParams(x, lb, ub), Z, w, ImpFunc);
-
-    % Optimization options
-    options = optimset('Display', 'off', 'MaxFunEvals', 100000, 'MaxIter', 10000);
-
-    % Perform the fitting using fminsearch
-    [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
-
-    % Transform the fitted parameters back to original space
-    vfit = transformParams(xfit, lb, ub);
-
-    % Store results
-    fit.simplex.coeff = vfit;
-    fit.simplex.exitflag = exitflag;
-    fit.simplex.output = output;
-    fit.simplex.fitcurve = ImpFunc(vfit, w);
-    % residuals of used by the method
-    fit.simplex.residuals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
-    fit.simplex.gof = fval;
-    [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
-    % Confidence intervals estimation is complex here and not provided
-    fit.simplex.coeffCI = NaN(length(v0), 2);
-catch ME
-    warning(ME.identifier, 'Simplex method failed: %s', ME.message);
-    fit.simplex = [];
-end
 end
