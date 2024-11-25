@@ -1,4 +1,4 @@
-function [Zfunc, x0, lb, ub] = KKfunc(data) 
+function [Zfunc, x0, lb, ub, var_names] = KKfunc(data) 
 % Generates an impedance fit based on Kramers-Kronig relations applied to
 % Boukamp's equivalent circuit (1995) plus an inductor in series
 
@@ -62,6 +62,12 @@ function [Zfunc, x0, lb, ub] = KKfunc(data)
     %x0 = [R0; tau0];
     %lb = [lbR; lbTau];
     %ub = [ubR; ubTau];
+
+    var_names = {'R0'; 'C0'};
+    for j = 1:M-3
+        var_names{end+1} = append('R', num2str(j));
+    end
+    var_names{end+1} = 'L0';
     
 end
 

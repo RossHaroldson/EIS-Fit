@@ -22,6 +22,9 @@ fit.ImpFunc = ImpFunc;
 lb = lb(:);
 ub = ub(:);
 v0 = v0(:);
+fit.lb = lb;
+fit.ub = ub;
+fit.v0 = v0;
 
 %% Method 1: Simplex Method (fminsearch with bounds)
 try
