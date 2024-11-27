@@ -13,6 +13,7 @@ function [Zfunc, x0, lb, ub, var_names] = KKfunc(data)
     % Kramers-Kronig relations for equivalent circuit (Boukamp, 1995)
     % set number of fitting parameters (default and max is M=N)
     M=N;
+    %M=30;
     Tauk = 1./logspace(log10(min(freq)),log10(max(freq)),M-3)';
     % Tauk = 1./freq;
     % weights = data.Zmod.^(-2);
@@ -33,28 +34,31 @@ function [Zfunc, x0, lb, ub, var_names] = KKfunc(data)
     %R0 = 1e4 * ones(numVoigt,1);
     % Log-space uniformly distributed random guesses
     x0 = 10.^(2.*5.*(rand(M,1)-1));
-    x0 = 2.*ones(M,1);
-    x0=linspace(log10(Zmodmax)-2,log10(Zmodmin)-2,M)';
-    x0 = log10(abs(Zdata))-1.5;
+    x0 = log10(Zmodmax)./M.*ones(M,1);
+    x0 = Zmodmax./M.*ones(M,1);
+    %x0 = zeros(M,1);
+    x0=logspace(log10(Zmodmax)-2,log10(Zmodmin)-2,M)';
+    %x0 = flip(log10(abs(Zdata)))-2;
+    
     %x0 = randflip(x0);
     %x0(1)= 10;
     % R guesses
     % x0 = 1e6 * ones(M,1);
-    x0(1) = 2;
+    x0(1) = 1e2;
     lb = -15.*ones(M,1);
     ub = 10.*ones(M,1);
     % 1/C guess
-    x0(2) = 5;
+    x0(2) = 1e4;
     lb(2) = 1/1e-1;
     ub(2) = 1/1e-13;
     % L guess
-    x0(end) = 10;
+    x0(end) = 1e-8;
     lb(end) = 1e-12;
     ub(end) = 1e-2;
     
     %lb = -1e10.* ones(M,1);
-    lb = -12.*ones(M,1);
-    ub = 12.*ones(M,1);
+    lb = 1e-12.*ones(M,1);
+    ub = 1e12.*ones(M,1);
     %tau0 = 1./logspace(max(log10(freq)),min(log10(freq)),numVoigt)';
     %lbTau = 1e-13 * ones(numVoigt,1);
     %ubTau = 1e6 * ones(numVoigt,1);
@@ -74,10 +78,10 @@ end
 function fitvec = KKvec(V,Tauk,w)
     fitvec = zeros(length(w),1);
     for i = 1:length(w)
-        % fitvec(i) =  V(1) + sum( V(3:end-1)./(1+(w(i).*Tauk).^2)) + ...
-        %     1i.*(-V(2)./w(i) - V(end).*w(i) - sum(V(3:end-1).*w(i).*Tauk./(1+(w(i).*Tauk).^2)));
-        fitvec(i) =  10.^V(1) + sum( 10.^V(3:end-1)./(1+(w(i).*Tauk).^2)) + ...
-            1i.*(-10.^V(2)./w(i) - 10.^V(end).*w(i) - sum(10.^V(3:end-1).*w(i).*Tauk./(1+(w(i).*Tauk).^2)));
+        fitvec(i) =  V(1) + sum( V(3:end-1)./(1+(w(i).*Tauk).^2)) + ...
+            1i.*(-V(2)./w(i) - V(end).*w(i) - sum(V(3:end-1).*w(i).*Tauk./(1+(w(i).*Tauk).^2)));
+        % fitvec(i) =  10.^V(1) + sum( 10.^V(3:end-1)./(1+(w(i).*Tauk).^2)) + ...
+        %     1i.*(-10.^V(2)./w(i) - 10.^V(end).*w(i) - sum(10.^V(3:end-1).*w(i).*Tauk./(1+(w(i).*Tauk).^2)));
     end
 end
 

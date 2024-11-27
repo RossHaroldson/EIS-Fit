@@ -9,8 +9,8 @@ function fit = fitZ(Z, freq, ImpFunc, v0, lb, ub)
 
 % Convert frequency to angular frequency
 w = 2.*pi.*freq;
-MaxIter = 300;
-MaxFunEval = 50*length(v0);
+MaxIter = 3000;
+MaxFunEval = 500*length(v0);
 Tol = 1e-12;
 % Initialize output structure
 fit.Z = Z;
