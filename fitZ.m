@@ -38,7 +38,8 @@ try
     options = optimset('Display', 'off', 'MaxFunEvals', 20*MaxFunEval, 'MaxIter', 20*MaxIter);
 
     % Perform the fitting using fminsearch
-    [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
+    % [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
+    [xfit, ~, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
 
     % Transform the fitted parameters back to original space
     vfit = transformParams(xfit, lb, ub);
@@ -53,7 +54,10 @@ try
     % fit.simplex.weightedresiduals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
     % residuals of used by the method
     fit.simplex.residuals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
-    fit.simplex.gof = fval;
+    % i think this goodness of fit isn't right. Do to the transformations
+    % we do it's residuals and gof aren't correct. We need to reevaluate
+    % the function and residuals without the transformations.
+    fit.simplex.gof = sum(abs(fit.simplex.residuals).^2);
     [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
     % Confidence intervals estimation is complex here and not provided
     fit.simplex.coeffCI = NaN(length(v0), 2);

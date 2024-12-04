@@ -13,7 +13,7 @@ for l = 1:length(VariableNames)
     if contains(VariableNames{l},'R')
         v0(l) = 100; % guess ohms
         lb(l) = 1; % lower bound
-        ub(l) = 1e10; % upper bound
+        ub(l) = 1e14; % upper bound
     elseif contains(VariableNames{l},'C')
         v0(l) = 1e-9; % guess farads
         lb(l) = 1e-13; % lower bound
