@@ -1,5 +1,5 @@
 % Fitting function for EIS using multiple methods
-function fit = fitZ(Z, freq, ImpFunc, v0, lb, ub)
+function fit = fitZ(Z, freq, ImpFunc, v0, lb, ub, options)
 % FitZ takes impedance spectra Z, frequency freq, an array of initial guesses v0,
 % lower bounds lb, upper bounds ub, and a circuit impedance function ImpFunc.
 % It fits the data using three methods: Simplex (fminsearch with bounds),
@@ -9,9 +9,21 @@ function fit = fitZ(Z, freq, ImpFunc, v0, lb, ub)
 
 % Convert frequency to angular frequency
 w = 2.*pi.*freq;
-MaxIter = 3000;
-MaxFunEval = 500*length(v0);
-Tol = 1e-12;
+if nargin < 7
+    MaxIter = 30000;
+    MaxFunEval = 5000*length(v0);
+    Tol = 1e-12;
+    SimpFactor = 200;
+    display = 'iter';
+    SimplexSeed = true;
+else
+    MaxIter = options.MaxIter;
+    MaxFunEval = options.MaxFunEval;
+    Tol = options.Tol;
+    SimpFactor = options.SimpFactor;
+    display = options.display;
+    SimplexSeed = options.SimplexSeed;
+end
 % Initialize output structure
 fit.Z = Z;
 fit.w = w;
@@ -28,6 +40,7 @@ fit.v0 = v0;
 
 %% Method 1: Simplex Method (fminsearch with bounds)
 try
+    tic
     % Transform initial guess to unbounded space
     x0 = paramTransform(v0, lb, ub);
 
@@ -35,7 +48,7 @@ try
     errfcn_transformed = @(x) errFunction(transformParams(x, lb, ub), Z, w, ImpFunc);
 
     % Optimization options
-    options = optimset('Display', 'off', 'MaxFunEvals', 20*MaxFunEval, 'MaxIter', 20*MaxIter);
+    options = optimset('Display', display, 'PlotFcns',@optimplotfval, 'MaxFunEvals', SimpFactor*MaxFunEval, 'MaxIter', SimpFactor*MaxIter,'TolFun',Tol,'TolX',Tol);
 
     % Perform the fitting using fminsearch
     % [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
@@ -61,6 +74,7 @@ try
     [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
     % Confidence intervals estimation is complex here and not provided
     fit.simplex.coeffCI = NaN(length(v0), 2);
+    fit.simplex.timeElapsed = toc;
 catch ME
     warning(ME.identifier, 'Simplex method failed: %s', ME.message);
     fit.simplex = [];
@@ -68,10 +82,13 @@ end
 
 %% Method 2: Levenberg-Marquardt Method (lsqnonlin without bounds)
 try
-    try
-        v0=fit.simplex.coeff;
-    catch
-        % stay with initial guesses
+    tic
+    if SimplexSeed
+        try
+            v0=fit.simplex.coeff;
+        catch
+            % stay with initial guesses
+        end
     end
     
     % Optimization options
@@ -79,7 +96,7 @@ try
         'MaxIterations', MaxIter,'MaxFunctionEvaluations', MaxFunEval,'Display', 'off', 'Algorithm', 'levenberg-marquardt');
     
     % Perform the fitting without bounds
-    [vfit, resnorm, residuals, exitflag, ~, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
+    [vfit, resnorm, residuals, exitflag, output, ~, J] = lsqnonlin(@(v) weightFunction(v, Z, w, ImpFunc), v0, lb, ub, options);
     
     % Store results
     fit.levenbergMarquardt.coeff = vfit;
@@ -96,6 +113,7 @@ try
     % Confidence intervals using nlparci
     ci = nlparci(vfit, residuals, 'jacobian', J);
     fit.levenbergMarquardt.coeffCI = ci;
+    fit.levenbergMarquardt.timeElapsed = toc;
 catch ME
     warning(ME.identifier,'Levenberg-Marquardt method failed: %s',ME.message);
     fit.levenbergMarquardt = [];
@@ -103,13 +121,16 @@ end
 
 %% Method 3: Trust-Region-Reflective Method (lsqnonlin with bounds)
 try
-    try
-        v0=fit.simplex.coeff;
-    catch
-        % stay with initial guesses
+    tic
+    if SimplexSeed
+        try
+            v0=fit.simplex.coeff;
+        catch
+            % stay with initial guesses
+        end
     end
     % Optimization options
-    options = optimoptions('lsqnonlin', 'FunctionTolerance', Tol, 'StepTolerance', Tol, ...
+    options = optimoptions('lsqnonlin', 'FunctionTolerance', Tol, ...
         'MaxIterations', MaxIter,'MaxFunctionEvaluations', MaxFunEval,'Display', 'off', 'Algorithm', 'trust-region-reflective');
     
     % Perform the fitting with bounds
@@ -130,6 +151,7 @@ try
     % Confidence intervals using nlparci
     ci = nlparci(vfit, residuals, 'jacobian', J);
     fit.trustRegion.coeffCI = ci;
+    fit.trustRegion.timeElapsed = toc;
 catch ME 
     warning(ME.identifier,'Trust-Region-Reflective method failed: %s', ME.message);
     fit.trustRegion = [];

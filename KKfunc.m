@@ -1,4 +1,4 @@
-function [Zfunc, x0, lb, ub, var_names] = KKfunc(data) 
+function [Zfunc, x0, lb, ub, var_names] = KKfunc(data, M) 
 % Generates an impedance fit based on Kramers-Kronig relations applied to
 % Boukamp's equivalent circuit (1995) plus an inductor in series
 
@@ -12,20 +12,15 @@ function [Zfunc, x0, lb, ub, var_names] = KKfunc(data)
 
     % Kramers-Kronig relations for equivalent circuit (Boukamp, 1995)
     % set number of fitting parameters (default and max is M=N)
-    M=N;
-    %M=30;
+    if nargin < 2
+        M = N;
+    elseif M < 4
+        M = 4;
+    elseif M > N
+        M = N;
+    end
     Tauk = 1./logspace(log10(min(freq)),log10(max(freq)),M-3)';
-    % Tauk = 1./freq;
-    % weights = data.Zmod.^(-2);
-    % imagSum = @(Rk,Tauk,w) sum( Rk./(1+(w'.*Tauk).^2), 2);
-    % Rinf = @(Rk,Tauk,w) sum(weights.*(real(Zdata)-imagSum(Rk,Tauk,w)))./sum(weights);
-    % ZcirRe = @(Rk,Tauk,w) Rinf(Rk,Tauk,w) + imagSum(Rk,Tauk,w);
-    % realSum = @(Rk,Tauk,w) -sum( w'.*Rk.*Tauk./(1+(w'.*Tauk).^2), 2);
-    % % Inductive reactance, determined similarly as Rinf
-    %XLinf = @(x,w) sum(weights.*(imag(Zdata)-realSum(x,w)))./sum(weights);
-    %ZcirIm = @(x,w) XLinf(x,w) + realSum(Rk,Tauk,w);
-    %ZcirIm = @(Rk,Tauk,L,C,w) -L.*w - 1./(C.*w) + realSum(Rk,Tauk,w);
-    %Zcircuit = @(V,w) ZcirRe(Rk,Tauk,w) + 1i.*ZcirIm(Rk,Tauk,L,C,w);
+
     Zfunc = @(V,w) KKvec(V,Tauk,w);
     % note: V(M) is the inductor element and V(2) is the 1/Capacitor and V(1) is the Rinf 
 
@@ -37,7 +32,7 @@ function [Zfunc, x0, lb, ub, var_names] = KKfunc(data)
     x0 = log10(Zmodmax)./M.*ones(M,1);
     x0 = Zmodmax./M.*ones(M,1);
     %x0 = zeros(M,1);
-    x0=logspace(log10(Zmodmax)-2,log10(Zmodmin)-2,M)';
+    x0=logspace(log10(Zmodmax)-1,log10(Zmodmin)-5,M)';
     %x0 = flip(log10(abs(Zdata)))-2;
     
     %x0 = randflip(x0);
@@ -52,7 +47,7 @@ function [Zfunc, x0, lb, ub, var_names] = KKfunc(data)
     lb(2) = 1/1e-1;
     ub(2) = 1/1e-13;
     % L guess
-    x0(end) = 1e-8;
+    x0(end) = 3e-8;
     lb(end) = 1e-12;
     ub(end) = 1e-2;
     
