@@ -29,6 +29,12 @@ fit.Z = Z;
 fit.w = w;
 fit.freq=freq;
 fit.ImpFunc = ImpFunc;
+fit.simplex.gof = NaN;
+fit.levenbergMarquardt.gof = NaN;
+fit.trustRegion.gof = NaN;
+fit.simplex.coeff = NaN;
+fit.levenbergMarquardt.coeff = NaN;
+fit.trustRegion.coeff = NaN;
 
 % Ensure lb and ub are column vectors
 lb = lb(:);
@@ -53,6 +59,7 @@ try
     % Perform the fitting using fminsearch
     % [xfit, fval, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
     [xfit, ~, exitflag,output] = fminsearch(errfcn_transformed, x0, options);
+    %tab = nma_simplex(A,b,c,debug)
 
     % Transform the fitted parameters back to original space
     vfit = transformParams(xfit, lb, ub);
