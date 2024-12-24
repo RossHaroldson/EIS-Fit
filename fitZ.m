@@ -72,7 +72,7 @@ try
     fit.simplex.fitcurve = ImpFunc(vfit, w);
     % weighted residuals for plotting
     % fit.simplex.weightedresiduals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
-    % residuals of used by the method
+    % residuals used by the method
     fit.simplex.residuals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
     % i think this goodness of fit isn't right. Do to the transformations
     % we do it's residuals and gof aren't correct. We need to reevaluate
