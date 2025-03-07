@@ -47,6 +47,8 @@ if nargin < 7 || isempty(userOptions)
     userOptions.SimpFactor    = 200;
     userOptions.display       = 'iter';
     userOptions.SimplexSeed   = true;
+    userOptions.UpperFreq     = inf;
+    userOptions.LowerFreq     = 0;
 end
 
 % Unpack user options for clarity
@@ -56,6 +58,8 @@ Tol           = userOptions.Tol;
 SimpFactor    = userOptions.SimpFactor;
 dispSetting   = userOptions.display;
 SimplexSeed   = userOptions.SimplexSeed;
+UpperFreq     = userOptions.UpperFreq;
+LowerFreq     = userOptions.LowerFreq;
 
 %% --- Initialize Output Structure ---
 fit.Z      = Z;
@@ -75,14 +79,28 @@ for m = methods
     fit.(m{1}).residuals = NaN;
 end
 
+% Crop data between upper and lower frequency bounds
+    Zcrop = Z;
+    freqcrop = freq;
+    wcrop = w;
+    for m = 1:length(Z)
+        if LowerFreq >= freq(m) || freq(m) >= UpperFreq
+            Zcrop(m)=NaN;
+        end
+    end
+    ind = ~isnan(Zcrop);
+    Zcrop = Zcrop(ind);
+    freqcrop = freqcrop(ind);
+    wcrop = wcrop(ind);
+
 %% --- Method 1: Simplex Method (fminsearch with bounds via transformation) ---
 try
     tStart = tic;
     % Transform initial guess from bounded to unbounded space.
     x0 = bounded2unbounded(v0, lb, ub);
-    
+
     % Define cost function: compute the residuals, then sum their squares.
-    costFunc = @(x) sum( computeResiduals( unbounded2bounded(x, lb, ub), Z, w, ImpFunc ).^2 );
+    costFunc = @(x) sum(computeResiduals( unbounded2bounded(x, lb, ub), Zcrop, wcrop, ImpFunc ));
     
     % Set optimization options for fminsearch
     simplexOpts = optimset('Display', dispSetting, ...
@@ -104,8 +122,9 @@ try
     fit.simplex.output    = output;
     fit.simplex.fitcurve  = ImpFunc(vFit, w);
     % Compute residuals using the common function.
-    fit.simplex.residuals = computeResiduals(vFit, Z, w, ImpFunc);
-    fit.simplex.gof       = fval;  % Sum of squared weighted residuals.
+    fit.simplex.residuals = (Z - fit.simplex.fitcurve)./abs(fit.simplex.fitcurve);
+    %fit.simplex.gof       = fval;  % Sum of squared weighted residuals.
+    fit.simplex.gof       = sum(abs(fit.simplex.residuals).^2);  % Sum of squared weighted residuals.
     [fit.simplex.R2, fit.simplex.R2adjusted] = computeR2(Z, fit.simplex.fitcurve, length(v0));
     % Confidence intervals are not computed for Simplex.
     fit.simplex.coeffCI   = NaN(length(v0), 2);
@@ -137,15 +156,15 @@ try
                           'Algorithm', 'levenberg-marquardt');
                       
     % Run lsqnonlin with the common residual function.
-    [vFit, resnorm, residuals, exitflag, output, ~, J] = lsqnonlin(@(v) computeResiduals(v, Z, w, ImpFunc), ...
+    [vFit, resnorm, residuals, exitflag, output, ~, J] = lsqnonlin(@(v) computeResiduals(v, Zcrop, wcrop, ImpFunc), ...
                                                                    v0_seed, lb, ub, lmOpts);
     % Store results.
     fit.levenbergMarquardt.coeff     = vFit;
     fit.levenbergMarquardt.exitflag  = exitflag;
     fit.levenbergMarquardt.output    = output;
     fit.levenbergMarquardt.fitcurve  = ImpFunc(vFit, w);
-    fit.levenbergMarquardt.residuals = residuals;
-    fit.levenbergMarquardt.gof       = resnorm;
+    fit.levenbergMarquardt.residuals = (Z - fit.levenbergMarquardt.fitcurve)./abs(fit.levenbergMarquardt.fitcurve);
+    fit.levenbergMarquardt.gof       = sum(abs(fit.simplex.residuals).^2); 
     [fit.levenbergMarquardt.R2, fit.levenbergMarquardt.R2adjusted] = computeR2(Z, fit.levenbergMarquardt.fitcurve, length(v0));
     % Compute confidence intervals using the Jacobian.
     ci = nlparci(vFit, residuals, 'jacobian', J);
@@ -177,15 +196,15 @@ try
                           'Algorithm', 'trust-region-reflective');
                       
     % Run lsqnonlin.
-    [vFit, resnorm, residuals, exitflag, output, ~, J] = lsqnonlin(@(v) computeResiduals(v, Z, w, ImpFunc), ...
+    [vFit, resnorm, residuals, exitflag, output, ~, J] = lsqnonlin(@(v) computeResiduals(v, Zcrop, wcrop, ImpFunc), ...
                                                                    v0_seed, lb, ub, trOpts);
     % Store results.
     fit.trustRegion.coeff     = vFit;
     fit.trustRegion.exitflag  = exitflag;
     fit.trustRegion.output    = output;
     fit.trustRegion.fitcurve  = ImpFunc(vFit, w);
-    fit.trustRegion.residuals = residuals;
-    fit.trustRegion.gof       = resnorm;
+    fit.trustRegion.residuals = (Z - fit.trustRegion.fitcurve)./abs(fit.trustRegion.fitcurve);
+    fit.trustRegion.gof       = sum(abs(fit.simplex.residuals).^2); 
     [fit.trustRegion.R2, fit.trustRegion.R2adjusted] = computeR2(Z, fit.trustRegion.fitcurve, length(v0));
     ci = nlparci(vFit, residuals, 'jacobian', J);
     fit.trustRegion.coeffCI   = ci;
@@ -206,10 +225,9 @@ end
 function res = computeResiduals(v, Z, w, ImpFunc)
     Zfit = ImpFunc(v, w);
     % Avoid division by zero; use a small epsilon.
-    epsilon = 1e-12;
-    weights = 1 ./ max(abs(Z), epsilon);
-    res = [ (real(Z) - real(Zfit)).*weights;
-            (imag(Z) - imag(Zfit)).*weights ];
+    %epsilon = 1e-12;
+    weights = 1./(abs(Z).^2);
+    res = (real(Z) - real(Zfit)).^2.*weights + (imag(Z) - imag(Zfit)).^2.*weights;
 end
 
 % Compute R-squared and adjusted R-squared using the absolute differences.
